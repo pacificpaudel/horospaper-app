@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useIsMobileViewport } from "@/lib/client/useIsMobileViewport";
 import Image from "next/image";
 import { NavBar } from "@/components/NavBar";
+import { FrameMode } from "@/components/FrameMode";
 import { BirthProfileForm } from "@/components/BirthProfileForm";
 import { CrystalBallScene } from "@/components/CrystalBallScene";
 import { ensureGuestId } from "@/lib/client/guest";
@@ -20,11 +21,17 @@ import { calculateLuckScore } from "@/lib/luckScore";
  * by imageUrl at the call site so switching images resets this cleanly.
  */
 function HoroscopeArtwork({ imageUrl, isMobile, luckScore }: { imageUrl: string; isMobile: boolean; luckScore: number }) {
-  const [naturalRatio, setNaturalRatio] = useState<number | null>(null);
-  const ratio = naturalRatio ?? (isMobile ? 1080 / 1920 : 1080 / 1350);
+  // Mobile's image is always exactly 1080x1920, so the frame is fitted to
+  // that real ratio (no crop needed). Desktop's source ratio varies by
+  // provider and isn't known ahead of time, so the frame instead fills the
+  // canvas edge-to-edge and lets the image cover-crop into it.
+  const [naturalRatio, setNaturalRatio] = useState(1080 / 1920);
 
   return (
-    <div className="output-frame" style={{ aspectRatio: ratio }}>
+    <div
+      className={isMobile ? "output-frame output-frame--fit" : "output-frame output-frame--fill"}
+      style={isMobile ? { aspectRatio: naturalRatio } : undefined}
+    >
       <Image
         src={imageUrl}
         alt=""
@@ -34,6 +41,7 @@ function HoroscopeArtwork({ imageUrl, isMobile, luckScore }: { imageUrl: string;
         unoptimized
         className="output-image"
         onLoad={(e) => {
+          if (!isMobile) return;
           const el = e.currentTarget;
           if (el.naturalWidth && el.naturalHeight) setNaturalRatio(el.naturalWidth / el.naturalHeight);
         }}
@@ -56,6 +64,7 @@ export default function HomePage() {
   const [horoscope, setHoroscope] = useState<HoroscopeDTO | null>(null);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [frameMode, setFrameMode] = useState(false);
   const isMobile = useIsMobileViewport();
 
   useEffect(() => {
@@ -63,6 +72,21 @@ export default function HomePage() {
     apiFetch<{ profile: BirthProfileDTO | null }>("/api/birth-profile")
       .then(({ profile: savedProfile }) => setProfile(savedProfile))
       .catch(() => setProfile(null));
+  }, []);
+
+  // Left running in frame mode, checks in once a day so a new day's
+  // horoscope picks up on its own; the endpoint is idempotent for the
+  // current day, so this is a no-op until the date actually rolls over.
+  const refreshHoroscope = useCallback(async () => {
+    try {
+      const { horoscope: latest } = await apiFetch<{ horoscope: HoroscopeDTO }>("/api/horoscope/generate", {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+      setHoroscope(latest);
+    } catch {
+      // A frame left running unattended shouldn't surface an error state.
+    }
   }, []);
 
   async function handleSaved(savedProfile: BirthProfileDTO) {
@@ -86,9 +110,13 @@ export default function HomePage() {
     const luckScore = calculateLuckScore(horoscope.astrologyData);
     const imageUrl = (isMobile && horoscope.imageUrlMobile) || horoscope.imageUrl;
 
+    if (frameMode) {
+      return <FrameMode imageUrl={imageUrl} onRefresh={refreshHoroscope} onExit={() => setFrameMode(false)} />;
+    }
+
     return (
       <div className="output-page flex min-h-0 flex-1 flex-col">
-        <NavBar downloadUrl={imageUrl} />
+        <NavBar downloadUrl={imageUrl} onFrame={() => setFrameMode(true)} />
         <main className="output-canvas">
           <HoroscopeArtwork key={imageUrl} imageUrl={imageUrl} isMobile={isMobile} luckScore={luckScore} />
         </main>

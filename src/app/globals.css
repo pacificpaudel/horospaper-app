@@ -97,19 +97,24 @@ body {
   padding: 0;
 }
 .output-page .output-canvas { height: calc(100vh - 9rem); min-height: calc(100vh - 9rem); }
-/* .output-frame's aspect-ratio is set inline in JS from the image's real
-   natural size (known exactly for the mobile variant, detected on load for
-   desktop, which varies by provider) so the luck-meter panel below always
-   aligns to the image's actual edges instead of a box sized for an assumed
-   ratio. width/height stay auto so it's the largest box of that ratio that
-   still fits within the canvas. */
-.output-frame { position: relative; width: auto; height: auto; max-width: 100%; max-height: 100%; border-radius: 1rem; overflow: hidden; background: var(--background-elevated); }
+.output-frame { position: relative; border-radius: 1rem; overflow: hidden; background: var(--background-elevated); }
+/* Desktop/laptop: the mobile-shaped image doesn't exist here, so the frame
+   fills the whole canvas edge-to-edge and the (varying-ratio) source image
+   is cropped to cover it -- matches the original edge-flush diagram/luck-
+   meter layout, which was tuned against a full-bleed fill, not a letterbox. */
+.output-frame--fill { width: 100%; height: 100%; }
+/* Mobile: the image is already generated at the exact wallpaper canvas
+   ratio, so the frame is sized to that real ratio (set inline in JS) and
+   fitted within the viewport instead of stretched/cropped further. */
+.output-frame--fit { width: auto; height: auto; max-width: 100%; max-height: 100%; }
 .output-image { display: block; width: 100%; height: 100%; object-fit: cover; }
 .luck-meter-panel { position: absolute; bottom: 1.5rem; left: 50%; width: min(19rem, calc(100% - 2rem)); transform: translateX(-50%); color: var(--foreground); text-shadow: 0 1px 12px rgba(0, 0, 0, 0.8); }
 .luck-meter-label { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem; font-size: 0.7rem; letter-spacing: 0.14em; text-transform: uppercase; }
 .luck-meter-label strong { color: var(--gold); font-size: 0.8rem; }
 .output-loader { width: 2rem; height: 2rem; border: 2px solid rgba(247, 197, 106, 0.25); border-top-color: var(--gold); border-radius: 50%; animation: spin 900ms linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+.frame-mode { position: fixed; inset: 0; z-index: 100; background: #000; cursor: pointer; }
+.frame-mode-image { object-fit: cover; object-position: center; }
 
 * {
   border-color: var(--border);
