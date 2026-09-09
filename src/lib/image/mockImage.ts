@@ -51,6 +51,7 @@ export function generateMockHoroscopeImageSvg(opts: {
   luckyTheme?: string;
   emotionalTheme?: string;
   moonIllumination?: number;
+  target?: { width: number; height: number };
 }): string {
   const rand = mulberry32(hashSeed(opts.seed));
   const [, bg2, accent] = PALETTES[opts.style];
@@ -117,10 +118,11 @@ export function generateMockHoroscopeImageSvg(opts: {
 
   const moon = Math.max(0.04, Math.min(0.96, moonIllumination));
   const terminatorX = moonR - moon * 2 * moonR;
-  const planetDiagrams = astrology ? buildPlanetDiagramsMarkup(astrology, WIDTH, HEIGHT) : "";
+  const targetWidth = opts.target?.width ?? WIDTH;
+  const targetHeight = opts.target?.height ?? HEIGHT;
+  const planetDiagrams = astrology ? buildPlanetDiagramsMarkup(astrology, targetWidth, targetHeight) : "";
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}">
-  <defs>
+  const artwork = `<defs>
     <linearGradient id="paper" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0%" stop-color="#f2e6c8" />
       <stop offset="48%" stop-color="#d8d2ad" />
@@ -172,7 +174,18 @@ export function generateMockHoroscopeImageSvg(opts: {
     <path d="M729 763c9-76 54-113 112-111 58 2 91 42 93 87-45-24-73-48-102-65-13 44-44 75-103 89Z" fill="#263448" />
   </g>
   ${botanical}
-  <path d="M112 1215c190-48 345 45 500-5s300-60 410 12" fill="none" stroke="#20314d" stroke-width="5" stroke-dasharray="12 20" opacity="0.55" />
+  <path d="M112 1215c190-48 345 45 500-5s300-60 410 12" fill="none" stroke="#20314d" stroke-width="5" stroke-dasharray="12 20" opacity="0.55" />`;
+
+  if (targetWidth === WIDTH && targetHeight === HEIGHT) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}">${artwork}${planetDiagrams}</svg>`;
+  }
+
+  // A taller/narrower target (e.g. a phone wallpaper canvas) reuses the same
+  // hand-tuned artwork, cover-cropped via a nested SVG viewport instead of
+  // re-laying out every hardcoded coordinate above. Diagrams are then drawn
+  // fresh in the real target coordinate space so they stay correctly inset.
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${targetWidth}" height="${targetHeight}" viewBox="0 0 ${targetWidth} ${targetHeight}">
+  <svg x="0" y="0" width="${targetWidth}" height="${targetHeight}" viewBox="0 0 ${WIDTH} ${HEIGHT}" preserveAspectRatio="xMidYMid slice">${artwork}</svg>
   ${planetDiagrams}
 </svg>`;
 }

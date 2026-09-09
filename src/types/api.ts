@@ -68,6 +68,7 @@ export interface HoroscopeDTO {
   astrologyData: StructuredAstrologyDataDTO;
   horoscopeText: HoroscopeSectionsDTO;
   imageUrl: string | null;
+  imageUrlMobile: string | null;
   imageStyle: ImageStyle;
   isPreview: boolean;
   createdAt: string;

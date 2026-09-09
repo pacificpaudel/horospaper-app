@@ -26,6 +26,7 @@ export interface Horoscope {
   astrologyData: StructuredAstrologyData;
   horoscopeText: HoroscopeSections;
   imageUrl: string | null;
+  imageUrlMobile: string | null;
   imageStyle: ImageStyle;
   imagePrompt: string | null;
   isPreview: boolean;

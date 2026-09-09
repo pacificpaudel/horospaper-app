@@ -83,6 +83,7 @@ export async function generateHoroscopeForUser(params: {
 
   const horoscopeId = randomUUID();
   let imageUrl: string | undefined;
+  let imageUrlMobile: string | undefined;
   let imagePrompt: string | undefined;
   try {
     const image = await generateHoroscopeImage({
@@ -95,6 +96,7 @@ export async function generateHoroscopeForUser(params: {
       emotionalTheme: sections.overall,
     });
     imageUrl = image.url;
+    imageUrlMobile = image.mobileUrl;
     imagePrompt = image.prompt;
   } catch (err) {
     logGenerationError(userId, "image", err);
@@ -108,6 +110,7 @@ export async function generateHoroscopeForUser(params: {
     astrologyData: astrology,
     horoscopeText: sections,
     imageUrl: imageUrl ?? null,
+    imageUrlMobile: imageUrlMobile ?? null,
     imagePrompt: imagePrompt ?? null,
     imageStyle: profile.imageStyle,
     isPreview,
