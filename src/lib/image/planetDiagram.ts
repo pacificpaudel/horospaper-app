@@ -149,11 +149,15 @@ function diagramGroup(spec: DiagramSpec, x: number, y: number, size: number, ast
 /** Returns the 4 corner planet-position diagrams as SVG markup, positioned for a `width`x`height` canvas. */
 export function buildPlanetDiagramsMarkup(astrology: StructuredAstrologyData, width: number, height: number): string {
   const size = Math.max(100, Math.min(190, Math.round(Math.min(width, height) * 0.17)));
-  const margin = Math.max(6, Math.round(size * 0.045));
+  const edgeMargin = Math.max(6, Math.round(size * 0.045));
+  // The app's UI overlays a luck-meter panel near the bottom of the displayed
+  // image, so the bottom row is pulled up well clear of that -- not just
+  // flush to the raw image edge like the top row.
+  const bottomMargin = Math.round(height * 0.13);
 
   return DIAGRAMS.map((spec, i) => {
-    const x = spec.corner.endsWith("left") ? margin : width - margin - size;
-    const y = spec.corner.startsWith("top") ? margin : height - margin - size;
+    const x = spec.corner.endsWith("left") ? edgeMargin : width - edgeMargin - size;
+    const y = spec.corner.startsWith("top") ? edgeMargin : height - bottomMargin - size;
     return diagramGroup(spec, x, y, size, astrology, `pd${i}`);
   }).join("");
 }
