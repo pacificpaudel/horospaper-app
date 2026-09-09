@@ -8,7 +8,7 @@ import { generateOpenverseImage } from "./openverseImage";
 import { withPlanetOverlay } from "./compositeOverlay";
 import { createHash } from "node:crypto";
 
-const IMAGE_GENERATOR_VERSION = "daily-image-v1";
+const IMAGE_GENERATOR_VERSION = "daily-image-v2";
 
 export interface GeneratedImage {
   url: string;
