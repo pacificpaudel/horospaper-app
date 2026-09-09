@@ -1,0 +1,34 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cosmic
+      POSTGRES_PASSWORD: cosmic
+      POSTGRES_DB: cosmic_daily
+    ports:
+      - "5432:5432"
+    volumes:
+      - cosmic_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cosmic -d cosmic_daily"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: "postgresql://cosmic:cosmic@db:5432/cosmic_daily?schema=public"
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./public/generated:/app/public/generated
+
+volumes:
+  cosmic_db_data:

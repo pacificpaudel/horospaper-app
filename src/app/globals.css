@@ -1,0 +1,102 @@
+@import "tailwindcss";
+
+:root {
+  --background: #101322;
+  --background-elevated: #171b2e;
+  --foreground: #f8f0df;
+  --muted: #9ba6b8;
+  --accent: #f2a65a;
+  --accent-soft: #e97855;
+  --gold: #f7c56a;
+  --border: rgba(248, 240, 223, 0.14);
+  --glass: rgba(255, 255, 255, 0.055);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-background-elevated: var(--background-elevated);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-gold: var(--gold);
+  --color-border: var(--border);
+  --color-glass: var(--glass);
+  --font-sans: var(--font-sans);
+  --font-serif: var(--font-serif);
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), ui-sans-serif, sans-serif;
+  min-height: 100vh;
+  position: relative;
+}
+
+/* Hubble space backdrop, fixed behind all content */
+.cosmic-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-color: var(--background);
+  background-image:
+    linear-gradient(180deg, rgba(5, 7, 16, 0.22), rgba(5, 7, 16, 0.48)),
+    url("https://external-content.duckduckgo.com/iu/?u=https%3A%2F%2Fwallup.net%2Fwp-content%2Fuploads%2F2018%2F09%2F26%2F670141-space-outer-universe-stars-photography-detail-astronomy-nasa-hubble.jpg&f=1&nofb=1&ipt=3d3a2a5f38848a7374c118409670c12d49f58c9126ed001fa790b6dcd6da223a");
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+}
+
+.glass-card {
+  background: var(--glass);
+  border: 1px solid var(--border);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-radius: 1rem;
+}
+
+.text-gradient {
+  background: linear-gradient(135deg, var(--gold), var(--accent) 60%, var(--accent-soft));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.eyebrow { color: var(--gold); font-size: 0.7rem; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; }
+.primary-button { border-radius: 999px; background: linear-gradient(100deg, var(--accent-soft), var(--accent)); padding: 0.85rem 1.25rem; color: #201729; font-size: 0.9rem; font-weight: 700; box-shadow: 0 12px 32px rgba(233, 120, 85, 0.2); transition: transform 150ms ease, filter 150ms ease; }
+.primary-button:hover { filter: brightness(1.08); transform: translateY(-1px); }
+.primary-button:disabled { cursor: not-allowed; opacity: 0.55; }
+.download-button { display: inline-flex; align-items: center; gap: 0.5rem; border: 1px solid var(--border); border-radius: 999px; padding: 0.55rem 0.85rem; color: var(--foreground); font-size: 0.78rem; transition: border-color 150ms ease, background 150ms ease; }
+.download-button:hover { border-color: var(--accent); background: rgba(242, 166, 90, 0.1); }
+.luck-meter { height: 0.65rem; overflow: hidden; border: 1px solid rgba(247, 197, 106, 0.35); border-radius: 999px; background: rgba(255, 255, 255, 0.07); }
+.luck-meter span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--accent-soft), var(--gold)); box-shadow: 0 0 18px rgba(247, 197, 106, 0.35); }
+.home-main { min-height: 0; gap: 0.25rem; }
+.crystal-scene { width: 100%; max-width: 1100px; height: clamp(180px, 38vh, 360px); margin: auto; overflow: hidden; background: transparent; }
+.crystal-scene svg { display: block; width: 100%; height: 100%; }
+.scene-mist { animation: mist-float 5s ease-in-out infinite alternate; }
+.scene-stars { animation: stars-glimmer 3s ease-in-out infinite alternate; }
+@keyframes mist-float { from { transform: translateY(4px); opacity: 0.38; } to { transform: translateY(-8px); opacity: 0.76; } }
+@keyframes stars-glimmer { from { opacity: 0.45; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .scene-mist, .scene-stars { animation: none; } }
+.output-canvas { position: relative; display: grid; width: calc(100% - 2rem); max-width: 72rem; height: calc(100vh - 5rem); min-height: calc(100vh - 5rem); margin: 0 auto; place-items: center; overflow: hidden; padding: 0; }
+.output-page .output-canvas { height: calc(100vh - 9rem); min-height: calc(100vh - 9rem); }
+.output-image { display: block; width: 100%; height: 100%; object-fit: cover; object-position: center; }
+.luck-meter-panel { position: absolute; bottom: 1.5rem; left: 50%; width: min(19rem, calc(100% - 2rem)); transform: translateX(-50%); color: var(--foreground); text-shadow: 0 1px 12px rgba(0, 0, 0, 0.8); }
+.luck-meter-label { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem; font-size: 0.7rem; letter-spacing: 0.14em; text-transform: uppercase; }
+.luck-meter-label strong { color: var(--gold); font-size: 0.8rem; }
+.output-loader { width: 2rem; height: 2rem; border: 2px solid rgba(247, 197, 106, 0.25); border-top-color: var(--gold); border-radius: 50%; animation: spin 900ms linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+* {
+  border-color: var(--border);
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: white;
+}
