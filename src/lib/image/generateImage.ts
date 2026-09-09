@@ -8,12 +8,16 @@ import { generateOpenverseImage } from "./openverseImage";
 import { withPlanetOverlay, TargetCanvas } from "./compositeOverlay";
 import { createHash } from "node:crypto";
 
-const IMAGE_GENERATOR_VERSION = "daily-image-v5";
+const IMAGE_GENERATOR_VERSION = "daily-image-v6";
 
-// A common phone-wallpaper canvas. The desktop/default image keeps whatever
-// aspect ratio its source naturally has (unchanged); this variant is
-// smart-cropped to a shape that actually fills a phone lock/home screen
-// instead of being cropped unpredictably by the OS after download.
+// Common wallpaper canvases. Source images (a random-aspect-ratio Openverse
+// photo, OpenAI's fixed portrait size, or the mock SVG's native 4:5) rarely
+// match either shape on their own, so both variants are smart-cropped to a
+// fixed canvas and the corner diagrams are drawn fresh on that final canvas
+// -- never on the untouched source -- so they always land exactly at the 4
+// edges of the image that actually gets shown, with no further cropping
+// happening after the fact (in CSS or in an OS's "set as wallpaper" crop).
+const DESKTOP_TARGET: TargetCanvas = { width: 1920, height: 1080 };
 const MOBILE_TARGET: TargetCanvas = { width: 1080, height: 1920 };
 
 export interface GeneratedImage {
@@ -48,7 +52,7 @@ export async function generateHoroscopeImage(params: {
       const { generateWithOpenAIImage } = await import("./openaiImage");
       const buffer = await generateWithOpenAIImage(prompt);
       const [desktop, mobile] = await Promise.all([
-        withPlanetOverlay(buffer, astrology),
+        withPlanetOverlay(buffer, astrology, DESKTOP_TARGET),
         withPlanetOverlay(buffer, astrology, MOBILE_TARGET),
       ]);
       const [{ url }, { url: mobileUrl }] = await Promise.all([
@@ -64,7 +68,7 @@ export async function generateHoroscopeImage(params: {
   try {
     const result = await generateOpenverseImage({ stableSeed, intent: deriveDailyIntent(astrology) });
     const [desktop, mobile] = await Promise.all([
-      withPlanetOverlay(result.buffer, astrology),
+      withPlanetOverlay(result.buffer, astrology, DESKTOP_TARGET),
       withPlanetOverlay(result.buffer, astrology, MOBILE_TARGET),
     ]);
     const [{ url }, { url: mobileUrl }] = await Promise.all([
@@ -85,7 +89,7 @@ export async function generateHoroscopeImage(params: {
     emotionalTheme,
     moonIllumination: astrology.today.moonIllumination,
   };
-  const svg = generateMockHoroscopeImageSvg(svgOpts);
+  const svg = generateMockHoroscopeImageSvg({ ...svgOpts, target: DESKTOP_TARGET });
   const mobileSvg = generateMockHoroscopeImageSvg({ ...svgOpts, target: MOBILE_TARGET });
   const [{ url }, { url: mobileUrl }] = await Promise.all([
     saveGeneratedFile(`${assetId}-${IMAGE_GENERATOR_VERSION}.svg`, svg, "image/svg+xml"),

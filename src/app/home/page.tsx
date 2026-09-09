@@ -12,39 +12,25 @@ import { apiFetch, ApiError } from "@/lib/client/api";
 import { BirthProfileDTO, HoroscopeDTO } from "@/types/api";
 import { calculateLuckScore } from "@/lib/luckScore";
 
-/**
- * The frame's aspect-ratio is set from the image's real natural size so the
- * luck-meter panel always aligns to the image's actual edges instead of a
- * box sized for an assumed ratio. It's known exactly for the mobile variant
- * (always generated at 1080x1920); for desktop it varies by provider, so we
- * start from a reasonable guess and correct it once the image loads. Keyed
- * by imageUrl at the call site so switching images resets this cleanly.
- */
-function HoroscopeArtwork({ imageUrl, isMobile, luckScore }: { imageUrl: string; isMobile: boolean; luckScore: number }) {
-  // Mobile's image is always exactly 1080x1920, so the frame is fitted to
-  // that real ratio (no crop needed). Desktop's source ratio varies by
-  // provider and isn't known ahead of time, so the frame instead fills the
-  // canvas edge-to-edge and lets the image cover-crop into it.
-  const [naturalRatio, setNaturalRatio] = useState(1080 / 1920);
+// Both variants are generated server-side at a fixed, known canvas (see
+// DESKTOP_TARGET/MOBILE_TARGET in generateImage.ts) with the corner
+// diagrams drawn fresh on that final canvas, so the frame here is sized to
+// the exact same ratio and never crops further -- the planets always stay
+// at the image's 4 edges, on any screen.
+const DESKTOP_RATIO = 1920 / 1080;
+const MOBILE_RATIO = 1080 / 1920;
 
+function HoroscopeArtwork({ imageUrl, isMobile, luckScore }: { imageUrl: string; isMobile: boolean; luckScore: number }) {
   return (
-    <div
-      className={isMobile ? "output-frame output-frame--fit" : "output-frame output-frame--fill"}
-      style={isMobile ? { aspectRatio: naturalRatio } : undefined}
-    >
+    <div className="output-frame" style={{ aspectRatio: isMobile ? MOBILE_RATIO : DESKTOP_RATIO }}>
       <Image
         src={imageUrl}
         alt=""
-        width={1080}
-        height={isMobile ? 1920 : 1350}
+        width={isMobile ? 1080 : 1920}
+        height={isMobile ? 1920 : 1080}
         priority
         unoptimized
         className="output-image"
-        onLoad={(e) => {
-          if (!isMobile) return;
-          const el = e.currentTarget;
-          if (el.naturalWidth && el.naturalHeight) setNaturalRatio(el.naturalWidth / el.naturalHeight);
-        }}
       />
       <div className="luck-meter-panel">
         <div className="luck-meter-label">
@@ -117,7 +103,7 @@ export default function HomePage() {
     return (
       <div className="output-page flex min-h-0 flex-1 flex-col">
         <NavBar downloadUrl={imageUrl} onFrame={() => setFrameMode(true)} />
-        <main className="output-canvas">
+        <main className="output-canvas mx-auto w-full max-w-6xl px-5 md:px-8">
           <HoroscopeArtwork key={imageUrl} imageUrl={imageUrl} isMobile={isMobile} luckScore={luckScore} />
         </main>
       </div>
@@ -127,7 +113,7 @@ export default function HomePage() {
   return (
     <div className="home-shell flex min-h-0 flex-1 flex-col">
       <NavBar />
-      <main className="home-main mx-auto flex w-full max-w-7xl flex-1 flex-col px-4 pb-2 pt-2 sm:px-6">
+      <main className="home-main mx-auto flex w-full max-w-6xl flex-1 flex-col px-5 pb-2 pt-2 md:px-8">
         {profile === undefined ? (
           <div className="output-loader mx-auto mt-4" aria-label="Loading" />
         ) : generating ? (
