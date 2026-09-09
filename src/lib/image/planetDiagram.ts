@@ -147,15 +147,19 @@ function diagramGroup(spec: DiagramSpec, x: number, y: number, size: number, ast
 }
 
 /**
- * Returns the 4 corner planet-position diagrams as SVG markup, flush to all
- * 4 edges of a `width`x`height` canvas. Safe to keep flush everywhere: the
- * on-screen luck-meter panel is a narrow, horizontally-centered overlay, and
- * the display frame is always sized to this exact canvas ratio (no further
- * cropping happens after this), so the corner boxes never end up under it.
+ * Returns the 4 corner planet-position diagrams as SVG markup for a
+ * `width`x`height` canvas. The on-screen display always cover-crops this
+ * canvas to fill whatever viewport it's shown in (so there's never a
+ * letterboxed gap), and that viewport's real ratio isn't necessarily the
+ * one this canvas was generated for -- a phone's true screen is usually
+ * taller than the fixed 9:16 mobile canvas, and a desktop window can be
+ * resized after generation. edgeMargin is therefore a real safety inset,
+ * not just decorative spacing, sized to survive a reasonably different
+ * crop, not just sit flush against this canvas's own raw edge.
  */
 export function buildPlanetDiagramsMarkup(astrology: StructuredAstrologyData, width: number, height: number): string {
   const size = Math.max(100, Math.min(190, Math.round(Math.min(width, height) * 0.17)));
-  const edgeMargin = Math.max(6, Math.round(size * 0.045));
+  const edgeMargin = Math.round(Math.min(width, height) * 0.05);
 
   return DIAGRAMS.map((spec, i) => {
     const x = spec.corner.endsWith("left") ? edgeMargin : width - edgeMargin - size;

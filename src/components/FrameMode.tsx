@@ -1,11 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import Image from "next/image";
 
 const REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000;
-const MOBILE_RATIO = 1080 / 1920;
-const DESKTOP_FALLBACK_RATIO = 16 / 9;
 
 /**
  * Fullscreen kiosk view for leaving the wallpaper running on a spare
@@ -16,22 +14,16 @@ const DESKTOP_FALLBACK_RATIO = 16 / 9;
  */
 export function FrameMode({
   imageUrl,
-  isMobile,
+  luckScore,
   onRefresh,
   onExit,
 }: {
   imageUrl: string;
-  isMobile: boolean;
+  luckScore: number;
   onRefresh: () => void;
   onExit: () => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  // The image is sized to its own exact real ratio (like the normal view)
-  // instead of a raw full-screen object-fit: cover, which would crop into
-  // the corner diagrams whenever the device's screen ratio doesn't match
-  // the image's -- almost always true for phones (e.g. 19.5:9 vs the
-  // image's fixed 9:16).
-  const [ratio, setRatio] = useState(isMobile ? MOBILE_RATIO : DESKTOP_FALLBACK_RATIO);
 
   useEffect(() => {
     containerRef.current?.requestFullscreen?.().catch(() => {});
@@ -73,20 +65,15 @@ export function FrameMode({
 
   return (
     <div ref={containerRef} className="frame-mode" onClick={onExit} role="button" tabIndex={-1} aria-label="Exit frame view">
-      <div className="frame-mode-frame" style={{ aspectRatio: ratio }}>
-        <Image
-          src={imageUrl}
-          alt=""
-          width={isMobile ? 1080 : 1920}
-          height={isMobile ? 1920 : 1080}
-          unoptimized
-          priority
-          className="frame-mode-image"
-          onLoad={(e) => {
-            const el = e.currentTarget;
-            if (el.naturalWidth && el.naturalHeight) setRatio(el.naturalWidth / el.naturalHeight);
-          }}
-        />
+      <Image src={imageUrl} alt="" fill unoptimized priority className="frame-mode-image" />
+      <div className="luck-meter-panel">
+        <div className="luck-meter-label">
+          <span>Your luck today</span>
+          <strong>{luckScore}%</strong>
+        </div>
+        <div className="luck-meter" role="progressbar" aria-label="Your luck today" aria-valuemin={0} aria-valuemax={100} aria-valuenow={luckScore}>
+          <span style={{ width: `${luckScore}%` }} />
+        </div>
       </div>
     </div>
   );

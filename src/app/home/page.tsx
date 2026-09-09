@@ -12,15 +12,6 @@ import { apiFetch, ApiError } from "@/lib/client/api";
 import { BirthProfileDTO, HoroscopeDTO } from "@/types/api";
 import { calculateLuckScore } from "@/lib/luckScore";
 
-// Mobile's canvas is always exactly 1080x1920. Desktop's is generated to
-// match the caller's actual viewport at request time (see desktopRatio
-// below), so it isn't known ahead of render -- start from a 16:9 guess and
-// correct it once the real image reports its natural size. Either way, the
-// frame is sized to the image's exact real ratio and never crops further,
-// so the corner diagrams always stay at the image's 4 edges.
-const MOBILE_RATIO = 1080 / 1920;
-const DESKTOP_FALLBACK_RATIO = 16 / 9;
-
 // Header (5rem) + footer (4rem) chrome subtracted from the viewport height,
 // and the output canvas's own max-w-6xl + padding subtracted from the
 // width, to approximate the exact box the wallpaper actually renders into
@@ -38,10 +29,8 @@ function desktopViewportRatio(): number | undefined {
 }
 
 function HoroscopeArtwork({ imageUrl, isMobile, luckScore }: { imageUrl: string; isMobile: boolean; luckScore: number }) {
-  const [ratio, setRatio] = useState(isMobile ? MOBILE_RATIO : DESKTOP_FALLBACK_RATIO);
-
   return (
-    <div className="output-frame" style={{ aspectRatio: ratio }}>
+    <div className="output-frame">
       <Image
         src={imageUrl}
         alt=""
@@ -50,10 +39,6 @@ function HoroscopeArtwork({ imageUrl, isMobile, luckScore }: { imageUrl: string;
         priority
         unoptimized
         className="output-image"
-        onLoad={(e) => {
-          const el = e.currentTarget;
-          if (el.naturalWidth && el.naturalHeight) setRatio(el.naturalWidth / el.naturalHeight);
-        }}
       />
       <div className="luck-meter-panel">
         <div className="luck-meter-label">
@@ -120,7 +105,7 @@ export default function HomePage() {
     const imageUrl = (isMobile && horoscope.imageUrlMobile) || horoscope.imageUrl;
 
     if (frameMode) {
-      return <FrameMode imageUrl={imageUrl} isMobile={isMobile} onRefresh={refreshHoroscope} onExit={() => setFrameMode(false)} />;
+      return <FrameMode imageUrl={imageUrl} luckScore={luckScore} onRefresh={refreshHoroscope} onExit={() => setFrameMode(false)} />;
     }
 
     return (

@@ -85,29 +85,26 @@ body {
 @media (prefers-reduced-motion: reduce) { .scene-mist, .scene-stars { animation: none; } }
 .output-canvas {
   position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   height: calc(100vh - 5rem);
   min-height: calc(100vh - 5rem);
   overflow: hidden;
 }
 .output-page .output-canvas { height: calc(100vh - 9rem); min-height: calc(100vh - 9rem); }
-/* Both the desktop and mobile variants are generated server-side at a fixed,
-   known canvas with the corner diagrams drawn on that final canvas (see
-   generateImage.ts), so the frame is sized to that exact ratio (set inline
-   in JS) and fitted within the viewport instead of cropped further -- the
-   planets always stay at the image's 4 edges, on any screen. */
-.output-frame { position: relative; width: auto; height: auto; max-width: 100%; max-height: 100%; border-radius: 1rem; overflow: hidden; background: var(--background-elevated); }
+/* Always fills the canvas completely -- no letterboxing, ever, regardless
+   of how the live viewport compares to whatever ratio the image was
+   generated for. The corner diagrams carry a real safety margin (see
+   planetDiagram.ts) sized to survive this crop rather than assuming a
+   perfect, gap-free match. */
+.output-frame { position: absolute; inset: 0; border-radius: 1rem; overflow: hidden; background: var(--background-elevated); }
 .output-image { display: block; width: 100%; height: 100%; object-fit: cover; }
 .luck-meter-panel { position: absolute; bottom: 1.5rem; left: 50%; width: min(19rem, calc(100% - 2rem)); transform: translateX(-50%); color: var(--foreground); text-shadow: 0 1px 12px rgba(0, 0, 0, 0.8); }
 .luck-meter-label { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem; font-size: 0.7rem; letter-spacing: 0.14em; text-transform: uppercase; }
 .luck-meter-label strong { color: var(--gold); font-size: 0.8rem; }
 .output-loader { width: 2rem; height: 2rem; border: 2px solid rgba(247, 197, 106, 0.25); border-top-color: var(--gold); border-radius: 50%; animation: spin 900ms linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-.frame-mode { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; background: #000; cursor: pointer; }
-.frame-mode-frame { position: relative; width: auto; height: auto; max-width: 100%; max-height: 100%; }
-.frame-mode-image { display: block; width: 100%; height: 100%; object-fit: cover; }
+.frame-mode { position: fixed; inset: 0; z-index: 100; background: #000; cursor: pointer; }
+.frame-mode-image { object-fit: cover; }
+.frame-mode .luck-meter-panel { bottom: 2rem; }
 
 * {
   border-color: var(--border);
