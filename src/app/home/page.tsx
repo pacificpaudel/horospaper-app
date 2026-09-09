@@ -21,15 +21,20 @@ import { calculateLuckScore } from "@/lib/luckScore";
 const MOBILE_RATIO = 1080 / 1920;
 const DESKTOP_FALLBACK_RATIO = 16 / 9;
 
-// Header (5rem) + footer (4rem) chrome subtracted from the viewport height
-// to approximate the space actually available for the wallpaper -- see
-// .output-page's height budget in globals.css.
+// Header (5rem) + footer (4rem) chrome subtracted from the viewport height,
+// and the output canvas's own max-w-6xl + padding subtracted from the
+// width, to approximate the exact box the wallpaper actually renders into
+// -- see .output-page's height budget and the <main> classes below.
 const CHROME_PX = 144;
+const CONTENT_MAX_WIDTH_PX = 1152; // max-w-6xl
+const MD_BREAKPOINT_PX = 768;
 
 function desktopViewportRatio(): number | undefined {
   if (typeof window === "undefined") return undefined;
+  const horizontalPadding = window.innerWidth >= MD_BREAKPOINT_PX ? 64 : 40; // md:px-8 vs px-5, both sides
+  const availableWidth = Math.min(window.innerWidth, CONTENT_MAX_WIDTH_PX) - horizontalPadding;
   const availableHeight = window.innerHeight - CHROME_PX;
-  return window.innerWidth / Math.max(1, availableHeight);
+  return Math.max(1, availableWidth) / Math.max(1, availableHeight);
 }
 
 function HoroscopeArtwork({ imageUrl, isMobile, luckScore }: { imageUrl: string; isMobile: boolean; luckScore: number }) {
