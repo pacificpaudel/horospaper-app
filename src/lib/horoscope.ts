@@ -1,13 +1,14 @@
 import { randomUUID } from "node:crypto";
-import { BirthProfile } from "@prisma/client";
 import { fromZonedTime } from "date-fns-tz";
-import { prisma } from "@/lib/prisma";
+import { redis, TTL_SECONDS } from "@/lib/redis";
 import { buildStructuredAstrologyData, StructuredAstrologyData } from "@/lib/astrology";
-import { dateOnlyUtc } from "@/lib/astrology/dailyData";
+import { dateOnlyString } from "@/lib/astrology/dailyData";
 import { generateHoroscope } from "@/lib/llm/generateHoroscope";
 import { HoroscopeSections } from "@/lib/llm/types";
 import { generateHoroscopeImage } from "@/lib/image/generateImage";
 import { buildDailyAstrologyKey, calculateLuckScore } from "@/lib/luckScore";
+import { BirthProfile } from "@/types/models";
+import { Horoscope } from "@/types/models";
 
 export class HoroscopeGenerationError extends Error {
   constructor(public stage: "astrology" | "llm" | "image" | "unknown", message: string) {
@@ -16,32 +17,46 @@ export class HoroscopeGenerationError extends Error {
 }
 
 function birthDateTimeToUtc(profile: BirthProfile): Date {
-  const dateStr = profile.birthDate.toISOString().slice(0, 10); // YYYY-MM-DD
-  const localIso = `${dateStr}T${profile.birthTime}:00`;
-  return fromZonedTime(localIso, profile.timezone);
+  return fromZonedTime(`${profile.birthDate}T${profile.birthTime}:00`, profile.timezone);
 }
 
-export async function getExistingHoroscope(userId: string, date: Date, isPreview = false) {
-  const day = dateOnlyUtc(date);
-  return prisma.horoscope.findUnique({
-    where: { userId_generationDate_isPreview: { userId, generationDate: day, isPreview } },
-  });
+function horoscopeKey(userId: string, day: string, isPreview: boolean): string {
+  return `horoscope:${userId}:${day}:${isPreview ? "preview" : "today"}`;
+}
+
+export async function getExistingHoroscope(
+  userId: string,
+  date: Date,
+  isPreview = false
+): Promise<Horoscope | null> {
+  const day = dateOnlyString(date);
+  return (await redis.get<Horoscope>(horoscopeKey(userId, day, isPreview))) ?? null;
+}
+
+export async function deleteHoroscopesForUser(userId: string): Promise<void> {
+  const today = dateOnlyString(new Date());
+  const tomorrow = dateOnlyString(new Date(Date.now() + 24 * 60 * 60 * 1000));
+  await redis.del(
+    horoscopeKey(userId, today, false),
+    horoscopeKey(userId, today, true),
+    horoscopeKey(userId, tomorrow, false),
+    horoscopeKey(userId, tomorrow, true)
+  );
 }
 
 /**
  * Runs the full pipeline: astrology calculation -> structured data ->
- * horoscope text -> image prompt -> image -> persisted result.
- * Idempotent per (user, date, isPreview) thanks to the DB unique
- * constraint -- callers should check getExistingHoroscope first.
+ * horoscope text -> image prompt -> image -> stored result (24h TTL,
+ * keyed by user + day + preview flag).
  */
 export async function generateHoroscopeForUser(params: {
   userId: string;
   profile: BirthProfile;
   forDate?: Date;
   isPreview?: boolean;
-}) {
+}): Promise<Horoscope> {
   const { userId, profile, forDate = new Date(), isPreview = false } = params;
-  const day = dateOnlyUtc(forDate);
+  const day = dateOnlyString(forDate);
 
   let astrology: StructuredAstrologyData;
   try {
@@ -50,10 +65,10 @@ export async function generateHoroscopeForUser(params: {
       latitude: profile.latitude,
       longitude: profile.longitude,
       system: profile.astrologySystem,
-      forDate: day,
+      forDate,
     });
   } catch (err) {
-    await logGenerationError(userId, "astrology", err);
+    logGenerationError(userId, "astrology", err);
     throw new HoroscopeGenerationError("astrology", "We couldn't calculate today's chart. Please try again.");
   }
 
@@ -62,7 +77,7 @@ export async function generateHoroscopeForUser(params: {
     const result = await generateHoroscope(astrology, { name: profile.name, language: profile.language });
     sections = result.sections;
   } catch (err) {
-    await logGenerationError(userId, "llm", err);
+    logGenerationError(userId, "llm", err);
     throw new HoroscopeGenerationError("llm", "We couldn't write today's horoscope. Please try again.");
   }
 
@@ -82,35 +97,28 @@ export async function generateHoroscopeForUser(params: {
     imageUrl = image.url;
     imagePrompt = image.prompt;
   } catch (err) {
-    await logGenerationError(userId, "image", err);
+    logGenerationError(userId, "image", err);
     // Text is still valuable without an image -- don't fail the whole request.
   }
 
-  return prisma.horoscope.upsert({
-    where: { userId_generationDate_isPreview: { userId, generationDate: day, isPreview } },
-    create: {
-      id: horoscopeId,
-      userId,
-      generationDate: day,
-      astrologyData: astrology as never,
-      horoscopeText: sections as never,
-      imageUrl,
-      imagePrompt,
-      imageStyle: profile.imageStyle,
-      isPreview,
-    },
-    update: {
-      astrologyData: astrology as never,
-      horoscopeText: sections as never,
-      imageUrl,
-      imagePrompt,
-      imageStyle: profile.imageStyle,
-    },
-  });
+  const horoscope: Horoscope = {
+    id: horoscopeId,
+    userId,
+    generationDate: day,
+    astrologyData: astrology,
+    horoscopeText: sections,
+    imageUrl: imageUrl ?? null,
+    imagePrompt: imagePrompt ?? null,
+    imageStyle: profile.imageStyle,
+    isPreview,
+    createdAt: new Date().toISOString(),
+  };
+
+  await redis.set(horoscopeKey(userId, day, isPreview), horoscope, { ex: TTL_SECONDS });
+  return horoscope;
 }
 
-async function logGenerationError(userId: string, stage: "astrology" | "llm" | "image", err: unknown) {
+function logGenerationError(userId: string, stage: "astrology" | "llm" | "image", err: unknown) {
   const message = err instanceof Error ? err.message : String(err);
-  console.error(`[horoscope:${stage}]`, message);
-  await prisma.generationError.create({ data: { userId, stage, message } }).catch(() => undefined);
+  console.error(`[horoscope:${stage}] user=${userId}`, message);
 }

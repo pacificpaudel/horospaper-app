@@ -1,4 +1,4 @@
-import { Language } from "@prisma/client";
+import { Language } from "@/types/enums";
 import { StructuredAstrologyData } from "@/lib/astrology";
 import { buildHoroscopePrompt } from "./prompt";
 import { generateMockHoroscope } from "./mockProvider";

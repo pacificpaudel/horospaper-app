@@ -1,5 +1,5 @@
-import { prisma } from "@/lib/prisma";
-import { dateOnlyUtc } from "@/lib/astrology/dailyData";
+import { redis, TTL_SECONDS } from "@/lib/redis";
+import { dateOnlyString } from "@/lib/astrology/dailyData";
 
 function freeLimit(): number {
   const n = parseInt(process.env.FREE_GENERATIONS_PER_DAY || "1", 10);
@@ -10,19 +10,19 @@ function usageLimitsDisabled(): boolean {
   return process.env.NODE_ENV !== "production" || process.env.DISABLE_USAGE_LIMITS === "true";
 }
 
+function usageKey(userId: string, date: Date): string {
+  return `usage:${userId}:${dateOnlyString(date)}`;
+}
+
 /**
  * Tracks "extra" generation actions per user per day (regenerating an
  * already-generated day, or generating tomorrow's preview). The very
  * first, automatic generation for "today" is always free and does not
  * consume this budget -- it's the core product experience and is cached
- * by the (userId, generationDate) unique constraint on Horoscope anyway.
+ * by the per-(user, day) horoscope key anyway.
  */
 export async function getUsageCount(userId: string, date: Date = new Date()): Promise<number> {
-  const day = dateOnlyUtc(date);
-  const usage = await prisma.generationUsage.findUnique({
-    where: { userId_generationDate: { userId, generationDate: day } },
-  });
-  return usage?.generationCount ?? 0;
+  return (await redis.get<number>(usageKey(userId, date))) ?? 0;
 }
 
 export async function canConsumeGeneration(userId: string, date: Date = new Date()): Promise<boolean> {
@@ -32,13 +32,16 @@ export async function canConsumeGeneration(userId: string, date: Date = new Date
 
 export async function consumeGeneration(userId: string, date: Date = new Date()): Promise<number> {
   if (usageLimitsDisabled()) return getUsageCount(userId, date);
-  const day = dateOnlyUtc(date);
-  const usage = await prisma.generationUsage.upsert({
-    where: { userId_generationDate: { userId, generationDate: day } },
-    create: { userId, generationDate: day, generationCount: 1 },
-    update: { generationCount: { increment: 1 } },
-  });
-  return usage.generationCount;
+  const key = usageKey(userId, date);
+  const count = await redis.incr(key);
+  if (count === 1) await redis.expire(key, TTL_SECONDS);
+  return count;
+}
+
+export async function deleteUsageForUser(userId: string): Promise<void> {
+  const today = new Date();
+  const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  await redis.del(usageKey(userId, today), usageKey(userId, tomorrow));
 }
 
 export function getFreeLimit(): number {

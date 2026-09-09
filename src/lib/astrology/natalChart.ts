@@ -1,4 +1,4 @@
-import { AstrologySystem } from "@prisma/client";
+import { AstrologySystem } from "@/types/enums";
 import { computeAscendantLongitude } from "./ascendant";
 import { PlanetKey } from "./constants";
 import { getAllPlanetPositions, PlanetPosition } from "./ephemeris";

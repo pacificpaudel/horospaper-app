@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { Geist } from "next/font/google";
 import { Cormorant_Garamond } from "next/font/google";
 import "./globals.css";
-import { Providers } from "./providers";
 import { Footer } from "@/components/Footer";
 
 const geistSans = Geist({
@@ -30,7 +29,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="min-h-full flex flex-col">
         <div className="cosmic-backdrop" aria-hidden="true" />
-        <Providers>{children}</Providers>
+        {children}
         <Footer />
       </body>
     </html>

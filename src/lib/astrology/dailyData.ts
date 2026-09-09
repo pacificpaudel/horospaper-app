@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma";
+import { redis, TTL_SECONDS } from "@/lib/redis";
 import { PlanetKey } from "./constants";
 import { getAllPlanetPositions, getMoonPhase, MoonPhaseInfo, PlanetPosition } from "./ephemeris";
 
@@ -13,6 +13,10 @@ export function dateOnlyUtc(date: Date): Date {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
 }
 
+export function dateOnlyString(date: Date): string {
+  return dateOnlyUtc(date).toISOString().slice(0, 10);
+}
+
 function computeDailyPlanetaryData(date: Date): DailyPlanetaryData {
   const planets = getAllPlanetPositions(date);
   const moonPhase = getMoonPhase(date);
@@ -20,7 +24,7 @@ function computeDailyPlanetaryData(date: Date): DailyPlanetaryData {
     (k) => planets[k].isRetrograde
   );
   return {
-    date: dateOnlyUtc(date).toISOString().slice(0, 10),
+    date: dateOnlyString(date),
     planets,
     moonPhase,
     retrogradePlanets,
@@ -30,21 +34,16 @@ function computeDailyPlanetaryData(date: Date): DailyPlanetaryData {
 /**
  * Returns today's (or any given day's) planetary positions, using a
  * per-day cache so we compute the ephemeris only once per calendar day
- * regardless of how many users generate a horoscope.
+ * regardless of how many people generate a horoscope.
  */
 export async function getDailyPlanetaryData(forDate: Date = new Date()): Promise<DailyPlanetaryData> {
   const day = dateOnlyUtc(forDate);
+  const key = `planetary:${dateOnlyString(day)}`;
 
-  const cached = await prisma.planetaryDataCache.findUnique({ where: { date: day } });
-  if (cached) {
-    return cached.data as unknown as DailyPlanetaryData;
-  }
+  const cached = await redis.get<DailyPlanetaryData>(key);
+  if (cached) return cached;
 
   const data = computeDailyPlanetaryData(day);
-  await prisma.planetaryDataCache.upsert({
-    where: { date: day },
-    create: { date: day, data: data as never },
-    update: { data: data as never },
-  });
+  await redis.set(key, data, { ex: TTL_SECONDS });
   return data;
 }

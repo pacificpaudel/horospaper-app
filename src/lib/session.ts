@@ -1,36 +1,18 @@
 import { NextRequest } from "next/server";
-import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
 
 export const GUEST_HEADER = "x-guest-id";
 
 export interface CurrentUser {
   id: string;
-  isGuest: boolean;
-  role: string;
-  disabled: boolean;
 }
 
 /**
- * Resolves the current user for an API request: a signed-in NextAuth
- * session takes priority; otherwise falls back to the guest id sent by
- * the client (created via /api/guest). Returns null if neither applies.
+ * Every visitor is an anonymous guest identified by a client-generated id
+ * (see src/lib/client/guest.ts). There's no account system or persistent
+ * user store -- the id is just a namespace for that browser's 24h data.
  */
-export async function getCurrentUser(request: NextRequest): Promise<CurrentUser | null> {
-  const session = await auth();
-  if (session?.user?.id) {
-    const user = await prisma.user.findUnique({ where: { id: session.user.id } });
-    if (!user) return null;
-    return { id: user.id, isGuest: false, role: user.role, disabled: user.disabled };
-  }
-
+export function getCurrentUser(request: NextRequest): CurrentUser | null {
   const guestId = request.headers.get(GUEST_HEADER);
-  if (guestId) {
-    const user = await prisma.user.findUnique({ where: { id: guestId } });
-    if (user && user.isGuest) {
-      return { id: user.id, isGuest: true, role: user.role, disabled: user.disabled };
-    }
-  }
-
-  return null;
+  if (!guestId) return null;
+  return { id: guestId };
 }

@@ -1,4 +1,4 @@
-import { AstrologySystem } from "@prisma/client";
+import { AstrologySystem } from "@/types/enums";
 import { PLANET_LABELS, PlanetKey } from "./constants";
 import { getDailyPlanetaryData } from "./dailyData";
 import { computeNatalChart, NatalChart } from "./natalChart";

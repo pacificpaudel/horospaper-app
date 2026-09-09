@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/session";
+import { getBirthProfile } from "@/lib/profile";
 import { generateHoroscopeForUser, getExistingHoroscope, HoroscopeGenerationError } from "@/lib/horoscope";
 import { canConsumeGeneration, consumeGeneration, getFreeLimit, getUsageCount } from "@/lib/usage";
 
@@ -13,15 +13,14 @@ import { canConsumeGeneration, consumeGeneration, getFreeLimit, getUsageCount } 
  * generations" budget.
  */
 export async function POST(request: NextRequest) {
-  const user = await getCurrentUser(request);
+  const user = getCurrentUser(request);
   if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-  if (user.disabled) return NextResponse.json({ error: "Account disabled" }, { status: 403 });
 
   const body = await request.json().catch(() => ({}));
   const preview = Boolean(body?.preview);
   const refresh = Boolean(body?.refresh);
 
-  const profile = await prisma.birthProfile.findUnique({ where: { userId: user.id } });
+  const profile = await getBirthProfile(user.id);
   if (!profile) {
     return NextResponse.json({ error: "Please complete your birth profile first" }, { status: 400 });
   }

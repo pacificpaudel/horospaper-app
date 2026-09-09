@@ -1,4 +1,4 @@
-import { ImageStyle } from "@prisma/client";
+import { ImageStyle } from "@/types/enums";
 import { StructuredAstrologyData } from "@/lib/astrology";
 
 const WIDTH = 1080;

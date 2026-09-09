@@ -5,15 +5,14 @@ export function getStoredGuestId(): string | null {
   return window.localStorage.getItem(GUEST_ID_KEY);
 }
 
-/** Returns the existing guest id, or creates one via the API and persists it. */
-export async function ensureGuestId(): Promise<string> {
+/** Returns the existing guest id, or mints and persists a new one. */
+export function ensureGuestId(): string {
   const existing = getStoredGuestId();
   if (existing) return existing;
 
-  const res = await fetch("/api/guest", { method: "POST" });
-  const data = (await res.json()) as { userId: string };
-  window.localStorage.setItem(GUEST_ID_KEY, data.userId);
-  return data.userId;
+  const id = window.crypto.randomUUID();
+  window.localStorage.setItem(GUEST_ID_KEY, id);
+  return id;
 }
 
 export function clearGuestId() {

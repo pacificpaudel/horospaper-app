@@ -1,22 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/session";
+import { getBirthProfile, saveBirthProfile, deleteUserData } from "@/lib/profile";
 import { geocodeLocation } from "@/lib/geocode";
 import { BirthProfileInputSchema } from "@/lib/validation";
-import { dateOnlyUtc } from "@/lib/astrology/dailyData";
+import { dateOnlyString } from "@/lib/astrology/dailyData";
 
 export async function GET(request: NextRequest) {
-  const user = await getCurrentUser(request);
+  const user = getCurrentUser(request);
   if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
-  const profile = await prisma.birthProfile.findUnique({ where: { userId: user.id } });
+  const profile = await getBirthProfile(user.id);
   return NextResponse.json({ profile });
 }
 
 export async function POST(request: NextRequest) {
-  const user = await getCurrentUser(request);
+  const user = getCurrentUser(request);
   if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-  if (user.disabled) return NextResponse.json({ error: "Account disabled" }, { status: 403 });
 
   const body = await request.json().catch(() => null);
   const parsed = BirthProfileInputSchema.safeParse(body);
@@ -33,37 +32,26 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: message }, { status: 422 });
   }
 
-  const data = {
+  const profile = await saveBirthProfile(user.id, {
     name: input.name || null,
-    birthDate: dateOnlyUtc(new Date(`${input.birthDate}T00:00:00Z`)),
+    birthDate: dateOnlyString(new Date(`${input.birthDate}T00:00:00Z`)),
     birthTime: input.birthTime,
     birthLocation: geo.label,
     latitude: geo.latitude,
     longitude: geo.longitude,
     timezone: geo.timezone,
-    astrologySystem: "VEDIC" as const,
+    astrologySystem: "VEDIC",
     language: input.language,
-    imageStyle: "MIXED_MEDIA" as const,
-  };
-
-  const profile = await prisma.birthProfile.upsert({
-    where: { userId: user.id },
-    create: { userId: user.id, ...data },
-    update: data,
+    imageStyle: "MIXED_MEDIA",
   });
 
   return NextResponse.json({ profile });
 }
 
 export async function DELETE(request: NextRequest) {
-  const user = await getCurrentUser(request);
+  const user = getCurrentUser(request);
   if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
-  await prisma.$transaction([
-    prisma.horoscope.deleteMany({ where: { userId: user.id } }),
-    prisma.generationUsage.deleteMany({ where: { userId: user.id } }),
-    prisma.birthProfile.deleteMany({ where: { userId: user.id } }),
-  ]);
-
+  await deleteUserData(user.id);
   return NextResponse.json({ ok: true });
 }

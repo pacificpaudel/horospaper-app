@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma";
+import { redis, TTL_SECONDS } from "@/lib/redis";
 
 export interface GeocodeResult {
   latitude: number;
@@ -55,24 +55,22 @@ async function fetchFromNominatim(query: string): Promise<GeocodeResult | null> 
   return { latitude, longitude, timezone, label: display_name };
 }
 
+function geocodeKey(query: string): string {
+  return `geocode:${query.toLowerCase()}`;
+}
+
 /**
  * Resolves a free-text birth location into coordinates + timezone,
- * caching results in the database so repeat lookups (very common --
- * many users share a birth city) never hit the network twice.
+ * caching results for 24h so repeat lookups (very common -- many people
+ * share a birth city) don't hit the network every time.
  */
 export async function geocodeLocation(query: string): Promise<GeocodeResult> {
   const normalized = query.trim();
   if (!normalized) throw new Error("Birth location is required");
 
-  const cached = await prisma.geocodeCache.findUnique({ where: { query: normalized } });
-  if (cached) {
-    return {
-      latitude: cached.latitude,
-      longitude: cached.longitude,
-      timezone: cached.timezone,
-      label: cached.label,
-    };
-  }
+  const key = geocodeKey(normalized);
+  const cached = await redis.get<GeocodeResult>(key);
+  if (cached) return cached;
 
   let result: GeocodeResult | null = null;
   try {
@@ -87,15 +85,6 @@ export async function geocodeLocation(query: string): Promise<GeocodeResult> {
     );
   }
 
-  await prisma.geocodeCache.create({
-    data: {
-      query: normalized,
-      latitude: result.latitude,
-      longitude: result.longitude,
-      timezone: result.timezone,
-      label: result.label,
-    },
-  });
-
+  await redis.set(key, result, { ex: TTL_SECONDS });
   return result;
 }

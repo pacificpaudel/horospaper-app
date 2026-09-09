@@ -5,24 +5,23 @@ import Image from "next/image";
 import { NavBar } from "@/components/NavBar";
 import { BirthProfileForm } from "@/components/BirthProfileForm";
 import { CrystalBallScene } from "@/components/CrystalBallScene";
-import { useIdentity } from "@/lib/client/useIdentity";
+import { ensureGuestId } from "@/lib/client/guest";
 import { apiFetch, ApiError } from "@/lib/client/api";
 import { BirthProfileDTO, HoroscopeDTO } from "@/types/api";
 import { calculateLuckScore } from "@/lib/luckScore";
 
 export default function HomePage() {
-  const { ready } = useIdentity();
   const [profile, setProfile] = useState<BirthProfileDTO | null | undefined>(undefined);
   const [horoscope, setHoroscope] = useState<HoroscopeDTO | null>(null);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!ready) return;
+    ensureGuestId();
     apiFetch<{ profile: BirthProfileDTO | null }>("/api/birth-profile")
       .then(({ profile: savedProfile }) => setProfile(savedProfile))
       .catch(() => setProfile(null));
-  }, [ready]);
+  }, []);
 
   async function handleSaved(savedProfile: BirthProfileDTO) {
     setProfile(savedProfile);
@@ -67,7 +66,7 @@ export default function HomePage() {
     <div className="home-shell flex min-h-0 flex-1 flex-col">
       <NavBar />
       <main className="home-main mx-auto flex w-full max-w-7xl flex-1 flex-col px-4 pb-2 pt-2 sm:px-6">
-        {!ready || profile === undefined ? (
+        {profile === undefined ? (
           <div className="output-loader mx-auto mt-4" aria-label="Loading" />
         ) : generating ? (
           <div className="flex flex-1 items-center justify-center">

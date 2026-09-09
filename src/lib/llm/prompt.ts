@@ -1,4 +1,4 @@
-import { Language } from "@prisma/client";
+import { Language } from "@/types/enums";
 import { StructuredAstrologyData } from "@/lib/astrology";
 
 const LANGUAGE_NAMES: Record<Language, string> = {

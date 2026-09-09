@@ -1,4 +1,4 @@
-import { ImageStyle } from "@prisma/client";
+import { ImageStyle } from "@/types/enums";
 import { StructuredAstrologyData } from "@/lib/astrology";
 import { saveGeneratedFile } from "@/lib/storage";
 import { buildImagePrompt } from "./prompt";
