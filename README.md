@@ -69,3 +69,11 @@ docker compose up -d --build
 
 `docker-compose.yml` runs Postgres and the app; the app container runs `prisma migrate deploy`
 on startup before starting the server.
+
+
+# Better half Launch
+```bash
+This just means that i asked my better half to  try the app
+```
+Findings : DB not getting connected, need to migrate to mongodb atlas
+
