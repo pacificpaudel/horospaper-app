@@ -1,18 +1,37 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 
 const REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const MOBILE_RATIO = 1080 / 1920;
+const DESKTOP_FALLBACK_RATIO = 16 / 9;
 
 /**
  * Fullscreen kiosk view for leaving the wallpaper running on a spare
  * tablet/monitor as a digital picture frame. Requests real Fullscreen API
- * fullscreen (so OS/browser chrome gets out of the way) and polls the
- * horoscope endpoint once a day so a new day's image picks up on its own.
+ * fullscreen and a screen wake lock (so it won't be interrupted by a
+ * screensaver or display sleep), and polls the horoscope endpoint once a
+ * day so a new day's image picks up on its own.
  */
-export function FrameMode({ imageUrl, onRefresh, onExit }: { imageUrl: string; onRefresh: () => void; onExit: () => void }) {
+export function FrameMode({
+  imageUrl,
+  isMobile,
+  onRefresh,
+  onExit,
+}: {
+  imageUrl: string;
+  isMobile: boolean;
+  onRefresh: () => void;
+  onExit: () => void;
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
+  // The image is sized to its own exact real ratio (like the normal view)
+  // instead of a raw full-screen object-fit: cover, which would crop into
+  // the corner diagrams whenever the device's screen ratio doesn't match
+  // the image's -- almost always true for phones (e.g. 19.5:9 vs the
+  // image's fixed 9:16).
+  const [ratio, setRatio] = useState(isMobile ? MOBILE_RATIO : DESKTOP_FALLBACK_RATIO);
 
   useEffect(() => {
     containerRef.current?.requestFullscreen?.().catch(() => {});
@@ -28,13 +47,47 @@ export function FrameMode({ imageUrl, onRefresh, onExit }: { imageUrl: string; o
   }, []);
 
   useEffect(() => {
+    let wakeLock: WakeLockSentinel | null = null;
+    const acquire = async () => {
+      try {
+        wakeLock = (await navigator.wakeLock?.request("screen")) ?? null;
+      } catch {
+        // Not supported, or refused (e.g. low battery) -- frame still works, just without the guarantee.
+      }
+    };
+    acquire();
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") acquire();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      wakeLock?.release().catch(() => {});
+    };
+  }, []);
+
+  useEffect(() => {
     const id = setInterval(onRefresh, REFRESH_INTERVAL_MS);
     return () => clearInterval(id);
   }, [onRefresh]);
 
   return (
     <div ref={containerRef} className="frame-mode" onClick={onExit} role="button" tabIndex={-1} aria-label="Exit frame view">
-      <Image src={imageUrl} alt="" fill unoptimized priority className="frame-mode-image" />
+      <div className="frame-mode-frame" style={{ aspectRatio: ratio }}>
+        <Image
+          src={imageUrl}
+          alt=""
+          width={isMobile ? 1080 : 1920}
+          height={isMobile ? 1920 : 1080}
+          unoptimized
+          priority
+          className="frame-mode-image"
+          onLoad={(e) => {
+            const el = e.currentTarget;
+            if (el.naturalWidth && el.naturalHeight) setRatio(el.naturalWidth / el.naturalHeight);
+          }}
+        />
+      </div>
     </div>
   );
 }

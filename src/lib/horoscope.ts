@@ -54,8 +54,9 @@ export async function generateHoroscopeForUser(params: {
   profile: BirthProfile;
   forDate?: Date;
   isPreview?: boolean;
+  desktopRatio?: number;
 }): Promise<Horoscope> {
-  const { userId, profile, forDate = new Date(), isPreview = false } = params;
+  const { userId, profile, forDate = new Date(), isPreview = false, desktopRatio } = params;
   const day = dateOnlyString(forDate);
 
   let astrology: StructuredAstrologyData;
@@ -94,6 +95,7 @@ export async function generateHoroscopeForUser(params: {
       style: profile.imageStyle,
       luckyTheme: sections.luckyTheme,
       emotionalTheme: sections.overall,
+      desktopRatio,
     });
     imageUrl = image.url;
     imageUrlMobile = image.mobileUrl;
