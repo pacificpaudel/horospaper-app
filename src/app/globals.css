@@ -83,9 +83,21 @@ body {
 @keyframes mist-float { from { transform: translateY(4px); opacity: 0.38; } to { transform: translateY(-8px); opacity: 0.76; } }
 @keyframes stars-glimmer { from { opacity: 0.45; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .scene-mist, .scene-stars { animation: none; } }
-.output-canvas { position: relative; display: grid; width: calc(100% - 2rem); max-width: 72rem; height: calc(100vh - 5rem); min-height: calc(100vh - 5rem); margin: 0 auto; place-items: center; overflow: hidden; padding: 0; }
-.output-page .output-canvas { height: calc(100vh - 9rem); min-height: calc(100vh - 9rem); }
-.output-image { display: block; width: 100%; height: 100%; object-fit: cover; object-position: center; }
+.output-canvas {
+  position: relative;
+  display: grid;
+  width: min(calc(100% - 2rem), calc((100vh - 5rem) * 4 / 5), 72rem);
+  aspect-ratio: 4 / 5;
+  max-height: calc(100vh - 5rem);
+  margin: 0 auto;
+  place-items: center;
+  overflow: hidden;
+  padding: 0;
+  border-radius: 1rem;
+  background: var(--background-elevated);
+}
+.output-page .output-canvas { width: min(calc(100% - 2rem), calc((100vh - 9rem) * 4 / 5), 72rem); max-height: calc(100vh - 9rem); }
+.output-image { display: block; width: 100%; height: 100%; object-fit: contain; object-position: center; }
 .luck-meter-panel { position: absolute; bottom: 1.5rem; left: 50%; width: min(19rem, calc(100% - 2rem)); transform: translateX(-50%); color: var(--foreground); text-shadow: 0 1px 12px rgba(0, 0, 0, 0.8); }
 .luck-meter-label { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem; font-size: 0.7rem; letter-spacing: 0.14em; text-transform: uppercase; }
 .luck-meter-label strong { color: var(--gold); font-size: 0.8rem; }
