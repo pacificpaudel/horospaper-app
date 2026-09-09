@@ -68,3 +68,12 @@ docker compose up -d --build
 
 `docker-compose.yml` runs the app container; it connects to `DATABASE_URL` (your MongoDB Atlas
 cluster) and runs `prisma db push` on startup before starting the server.
+
+
+# Better half Launch
+```bash
+This just means that i asked my better half to  try the app
+```
+Findings : DB not getting connected, need to migrate to mongodb atlas
+
+Update: migrated to MongoDB Atlas — see the "Getting started" and "Deploying" sections above.
