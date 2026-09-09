@@ -1,4 +1,3 @@
-import { saveGeneratedFile } from "@/lib/storage";
 import { dailyIntentQuery, DailyIntent } from "./dailyIntent";
 
 const OPENVERSE_API = "https://api.openverse.org/v1/images/";
@@ -26,10 +25,9 @@ function hash(input: string): number {
 }
 
 export async function generateOpenverseImage(params: {
-  assetId: string;
   stableSeed: string;
   intent: DailyIntent;
-}): Promise<{ url: string; prompt: string }> {
+}): Promise<{ buffer: Buffer; contentType: string; extension: string; prompt: string }> {
   const query = dailyIntentQuery(params.intent);
   const queries = [
     query,
@@ -67,9 +65,8 @@ export async function generateOpenverseImage(params: {
     if (!contentType.startsWith("image/")) throw new Error("Openverse result was not an image");
     const extension = contentType === "image/png" ? "png" : contentType === "image/webp" ? "webp" : "jpg";
     const buffer = Buffer.from(await imageResponse.arrayBuffer());
-    const stored = await saveGeneratedFile(`${params.assetId}-daily-image-v1.${extension}`, buffer, contentType);
     const attribution = selected.attribution || `${selected.title || "Openverse image"} by ${selected.creator || "unknown creator"}`;
-    return { url: stored.url, prompt: `Openverse daily intent: ${query}. ${attribution}` };
+    return { buffer, contentType, extension, prompt: `Openverse daily intent: ${query}. ${attribution}` };
   } finally {
     clearTimeout(timeout);
   }

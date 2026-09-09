@@ -24,6 +24,8 @@ export interface StructuredAstrologyData {
     moonSign: string;
     sunLongitude: number;
     moonLongitude: number;
+    marsLongitude: number;
+    saturnLongitude: number;
     moonPhaseName: string;
     moonIllumination: number;
     retrogradePlanets: string[];
@@ -61,6 +63,8 @@ export async function buildStructuredAstrologyData(params: {
       moonSign: daily.planets.moon.sign,
       sunLongitude: daily.planets.sun.longitude,
       moonLongitude: daily.planets.moon.longitude,
+      marsLongitude: daily.planets.mars.longitude,
+      saturnLongitude: daily.planets.saturn.longitude,
       moonPhaseName: daily.moonPhase.phaseName,
       moonIllumination: Math.round(daily.moonPhase.illumination * 100) / 100,
       retrogradePlanets: daily.retrogradePlanets.map((p: PlanetKey) => PLANET_LABELS[p]),

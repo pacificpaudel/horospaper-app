@@ -5,6 +5,7 @@ import { buildImagePrompt } from "./prompt";
 import { generateMockHoroscopeImageSvg } from "./mockImage";
 import { deriveDailyIntent } from "./dailyIntent";
 import { generateOpenverseImage } from "./openverseImage";
+import { withPlanetOverlay } from "./compositeOverlay";
 import { createHash } from "node:crypto";
 
 const IMAGE_GENERATOR_VERSION = "daily-image-v1";
@@ -38,7 +39,8 @@ export async function generateHoroscopeImage(params: {
     try {
       const { generateWithOpenAIImage } = await import("./openaiImage");
       const buffer = await generateWithOpenAIImage(prompt);
-      const { url } = await saveGeneratedFile(`${assetId}-${IMAGE_GENERATOR_VERSION}.png`, buffer, "image/png");
+      const composited = await withPlanetOverlay(buffer, astrology);
+      const { url } = await saveGeneratedFile(`${assetId}-${IMAGE_GENERATOR_VERSION}.png`, composited, "image/png");
       return { url, prompt, provider };
     } catch (err) {
       console.error("[image] openai generation failed, falling back to mock:", err);
@@ -46,12 +48,14 @@ export async function generateHoroscopeImage(params: {
   }
 
   try {
-    const result = await generateOpenverseImage({
-      assetId,
-      stableSeed,
-      intent: deriveDailyIntent(astrology),
-    });
-    return { ...result, provider: "openverse" };
+    const result = await generateOpenverseImage({ stableSeed, intent: deriveDailyIntent(astrology) });
+    const composited = await withPlanetOverlay(result.buffer, astrology);
+    const { url } = await saveGeneratedFile(
+      `${assetId}-${IMAGE_GENERATOR_VERSION}.${result.extension}`,
+      composited,
+      result.contentType
+    );
+    return { url, prompt: result.prompt, provider: "openverse" };
   } catch (err) {
     console.error("[image] Openverse generation failed, falling back to local art:", err);
   }

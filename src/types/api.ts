@@ -52,6 +52,8 @@ export interface StructuredAstrologyDataDTO {
     moonSign: string;
     sunLongitude: number;
     moonLongitude: number;
+    marsLongitude: number;
+    saturnLongitude: number;
     moonPhaseName: string;
     moonIllumination: number;
     retrogradePlanets: string[];

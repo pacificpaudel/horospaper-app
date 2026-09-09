@@ -1,5 +1,6 @@
 import { ImageStyle } from "@/types/enums";
 import { StructuredAstrologyData } from "@/lib/astrology";
+import { buildPlanetDiagramsMarkup } from "./planetDiagram";
 
 const WIDTH = 1080;
 const HEIGHT = 1350; // 4:5
@@ -116,6 +117,7 @@ export function generateMockHoroscopeImageSvg(opts: {
 
   const moon = Math.max(0.04, Math.min(0.96, moonIllumination));
   const terminatorX = moonR - moon * 2 * moonR;
+  const planetDiagrams = astrology ? buildPlanetDiagramsMarkup(astrology, WIDTH, HEIGHT) : "";
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}">
   <defs>
@@ -171,5 +173,6 @@ export function generateMockHoroscopeImageSvg(opts: {
   </g>
   ${botanical}
   <path d="M112 1215c190-48 345 45 500-5s300-60 410 12" fill="none" stroke="#20314d" stroke-width="5" stroke-dasharray="12 20" opacity="0.55" />
+  ${planetDiagrams}
 </svg>`;
 }

@@ -18,6 +18,7 @@
     "next": "16.3.3",
     "react": "19.2.8",
     "react-dom": "19.2.8",
+    "sharp": "^0.35.4",
     "zod": "^4.4.3"
   },
   "devDependencies": {
@@ -33,6 +34,7 @@
   },
   "allowScripts": {
     "esbuild@0.28.2": true,
-    "unrs-resolver@1.12.2": true
+    "unrs-resolver@1.12.2": true,
+    "sharp@0.35.4": true
   }
 }
