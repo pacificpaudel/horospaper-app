@@ -8,7 +8,7 @@ import { generateOpenverseImage } from "./openverseImage";
 import { withWallpaperOverlay, TargetCanvas } from "./compositeOverlay";
 import { createHash } from "node:crypto";
 
-const IMAGE_GENERATOR_VERSION = "daily-image-v9";
+const IMAGE_GENERATOR_VERSION = "daily-image-v10";
 
 // Source images (a random-aspect-ratio Openverse photo, OpenAI's fixed
 // portrait size, or the mock SVG's native 4:5) rarely match either wallpaper
