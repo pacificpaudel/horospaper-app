@@ -9,4 +9,4 @@ COPY . .
 RUN npm run build
 
 EXPOSE 3000
-CMD ["sh", "-c", "npx prisma db push --accept-data-loss && npm start"]
+CMD ["sh", "-c", "npx prisma migrate deploy && npm start"]

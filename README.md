@@ -28,9 +28,9 @@ ephemeris library, no external API or credentials required).
 ## Getting started
 
 ```bash
-cp .env.example .env           # then set DATABASE_URL to your MongoDB Atlas connection string
+cp .env.example .env           # then set DATABASE_URL to your Postgres connection string
 npm install
-npx prisma db push             # syncs the schema to your Atlas cluster
+npx prisma migrate deploy      # applies the schema to your database
 npm run dev
 ```
 
@@ -49,15 +49,15 @@ See `.env.example` for the full list.
 
 There's no self-serve admin promotion in this MVP. Promote a user after they've registered:
 
-```js
-db.User.updateOne({ email: "you@example.com" }, { $set: { role: "admin" } });
+```sql
+UPDATE "User" SET role = 'admin' WHERE email = 'you@example.com';
 ```
 
 Then sign out and back in (the admin role is embedded in the session JWT), and visit `/admin`.
 
 ## Tech stack
 
-Next.js (App Router) + TypeScript + Tailwind CSS, MongoDB Atlas + Prisma ORM, Auth.js v5
+Next.js (App Router) + TypeScript + Tailwind CSS, Postgres (Neon) + Prisma ORM, Auth.js v5
 (guest / email+password / Google), astronomy-engine for ephemeris math.
 
 ## Deploying
@@ -66,8 +66,8 @@ Next.js (App Router) + TypeScript + Tailwind CSS, MongoDB Atlas + Prisma ORM, Au
 docker compose up -d --build
 ```
 
-`docker-compose.yml` runs the app container; it connects to `DATABASE_URL` (your MongoDB Atlas
-cluster) and runs `prisma db push` on startup before starting the server.
+`docker-compose.yml` runs the app container; it connects to `DATABASE_URL` (your Postgres
+database) and runs `prisma migrate deploy` on startup before starting the server.
 
 
 # Better half Launch
@@ -76,4 +76,6 @@ This just means that i asked my better half to  try the app
 ```
 Findings : DB not getting connected, need to migrate to mongodb atlas
 
-Update: migrated to MongoDB Atlas — see the "Getting started" and "Deploying" sections above.
+Update: MongoDB Atlas's free tier doesn't support the multi-document transactions Prisma needs,
+so the database is Postgres (Neon, via Vercel Marketplace) instead — see "Getting started" and
+"Deploying" above.

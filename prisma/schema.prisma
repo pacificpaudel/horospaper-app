@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "mongodb"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -38,7 +38,7 @@ enum AuthProvider {
 }
 
 model User {
-  id            String       @id @default(cuid()) @map("_id")
+  id            String       @id @default(cuid())
   name          String?
   email         String?      @unique
   passwordHash  String?
@@ -58,17 +58,17 @@ model User {
 
 // NextAuth adapter models
 model Account {
-  id                String  @id @default(cuid()) @map("_id")
+  id                String  @id @default(cuid())
   userId            String
   type              String
   provider          String
   providerAccountId String
-  refresh_token     String?
-  access_token      String?
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
   expires_at        Int?
   token_type        String?
   scope             String?
-  id_token          String?
+  id_token          String? @db.Text
   session_state     String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -77,7 +77,7 @@ model Account {
 }
 
 model Session {
-  id           String   @id @default(cuid()) @map("_id")
+  id           String   @id @default(cuid())
   sessionToken String   @unique
   userId       String
   expires      DateTime
@@ -86,7 +86,6 @@ model Session {
 }
 
 model VerificationToken {
-  id         String   @id @default(cuid()) @map("_id")
   identifier String
   token      String   @unique
   expires    DateTime
@@ -95,7 +94,7 @@ model VerificationToken {
 }
 
 model BirthProfile {
-  id              String          @id @default(cuid()) @map("_id")
+  id              String          @id @default(cuid())
   userId          String          @unique
   name            String?
   birthDate       DateTime // date only, stored at midnight UTC
@@ -114,16 +113,16 @@ model BirthProfile {
 }
 
 model Horoscope {
-  id             String     @id @default(cuid()) @map("_id")
+  id             String     @id @default(cuid())
   userId         String
   generationDate DateTime // date only, the day this horoscope is for
   astrologyData  Json // structured natal + transit + today data sent to the LLM
   horoscopeText  Json // structured sections: overall, love, career, money, energy, focus, motivation
   imageUrl       String?
   imageStyle     ImageStyle @default(COSMIC)
-  imagePrompt    String?
+  imagePrompt    String?    @db.Text
   isPreview      Boolean    @default(false) // true for "tomorrow's preview"
-  error          String?
+  error          String?    @db.Text
   createdAt      DateTime   @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -133,7 +132,7 @@ model Horoscope {
 }
 
 model GenerationUsage {
-  id              String   @id @default(cuid()) @map("_id")
+  id              String   @id @default(cuid())
   userId          String
   generationDate  DateTime // date only
   generationCount Int      @default(0)
@@ -146,7 +145,7 @@ model GenerationUsage {
 }
 
 model GeocodeCache {
-  id        String   @id @default(cuid()) @map("_id")
+  id        String   @id @default(cuid())
   query     String   @unique
   latitude  Float
   longitude Float
@@ -156,16 +155,16 @@ model GeocodeCache {
 }
 
 model PlanetaryDataCache {
-  id        String   @id @default(cuid()) @map("_id")
+  id        String   @id @default(cuid())
   date      DateTime @unique // date only, UTC midnight
   data      Json // Sun/Moon/planet positions, moon phase, retrogrades for that date
   createdAt DateTime @default(now())
 }
 
 model GenerationError {
-  id        String   @id @default(cuid()) @map("_id")
+  id        String   @id @default(cuid())
   userId    String?
   stage     String // "astrology" | "geocode" | "llm" | "image" | "unknown"
-  message   String
+  message   String   @db.Text
   createdAt DateTime @default(now())
 }
