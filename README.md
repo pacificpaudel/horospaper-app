@@ -28,10 +28,9 @@ ephemeris library, no external API or credentials required).
 ## Getting started
 
 ```bash
-cp .env.example .env
-docker compose up -d db        # local Postgres
+cp .env.example .env           # then set DATABASE_URL to your MongoDB Atlas connection string
 npm install
-npx prisma migrate dev         # creates the schema
+npx prisma db push             # syncs the schema to your Atlas cluster
 npm run dev
 ```
 
@@ -50,15 +49,15 @@ See `.env.example` for the full list.
 
 There's no self-serve admin promotion in this MVP. Promote a user after they've registered:
 
-```sql
-UPDATE "User" SET role = 'admin' WHERE email = 'you@example.com';
+```js
+db.User.updateOne({ email: "you@example.com" }, { $set: { role: "admin" } });
 ```
 
 Then sign out and back in (the admin role is embedded in the session JWT), and visit `/admin`.
 
 ## Tech stack
 
-Next.js (App Router) + TypeScript + Tailwind CSS, PostgreSQL + Prisma ORM, Auth.js v5
+Next.js (App Router) + TypeScript + Tailwind CSS, MongoDB Atlas + Prisma ORM, Auth.js v5
 (guest / email+password / Google), astronomy-engine for ephemeris math.
 
 ## Deploying
@@ -67,5 +66,5 @@ Next.js (App Router) + TypeScript + Tailwind CSS, PostgreSQL + Prisma ORM, Auth.
 docker compose up -d --build
 ```
 
-`docker-compose.yml` runs Postgres and the app; the app container runs `prisma migrate deploy`
-on startup before starting the server.
+`docker-compose.yml` runs the app container; it connects to `DATABASE_URL` (your MongoDB Atlas
+cluster) and runs `prisma db push` on startup before starting the server.
