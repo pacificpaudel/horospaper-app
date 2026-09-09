@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
   if (preview) targetDate.setUTCDate(targetDate.getUTCDate() + 1);
 
   const existing = await getExistingHoroscope(user.id, targetDate, preview);
-  const hasCurrentDailyImage = existing?.imageUrl?.includes("-daily-image-v8.");
+  const hasCurrentDailyImage = existing?.imageUrl?.includes("-daily-image-v9.");
   if (existing && (!refresh || hasCurrentDailyImage)) {
     return NextResponse.json({ horoscope: existing, cached: true });
   }

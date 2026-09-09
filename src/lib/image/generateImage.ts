@@ -5,10 +5,10 @@ import { buildImagePrompt } from "./prompt";
 import { generateMockHoroscopeImageSvg } from "./mockImage";
 import { deriveDailyIntent } from "./dailyIntent";
 import { generateOpenverseImage } from "./openverseImage";
-import { withPlanetOverlay, TargetCanvas } from "./compositeOverlay";
+import { withWallpaperOverlay, TargetCanvas } from "./compositeOverlay";
 import { createHash } from "node:crypto";
 
-const IMAGE_GENERATOR_VERSION = "daily-image-v8";
+const IMAGE_GENERATOR_VERSION = "daily-image-v9";
 
 // Source images (a random-aspect-ratio Openverse photo, OpenAI's fixed
 // portrait size, or the mock SVG's native 4:5) rarely match either wallpaper
@@ -70,8 +70,8 @@ export async function generateHoroscopeImage(params: {
       const { generateWithOpenAIImage } = await import("./openaiImage");
       const buffer = await generateWithOpenAIImage(prompt);
       const [desktop, mobile] = await Promise.all([
-        withPlanetOverlay(buffer, astrology, DESKTOP_TARGET),
-        withPlanetOverlay(buffer, astrology, MOBILE_TARGET),
+        withWallpaperOverlay(buffer, astrology, luckScore, DESKTOP_TARGET),
+        withWallpaperOverlay(buffer, astrology, luckScore, MOBILE_TARGET),
       ]);
       const [{ url }, { url: mobileUrl }] = await Promise.all([
         saveGeneratedFile(`${assetId}-${IMAGE_GENERATOR_VERSION}.png`, desktop, "image/png"),
@@ -86,8 +86,8 @@ export async function generateHoroscopeImage(params: {
   try {
     const result = await generateOpenverseImage({ stableSeed, intent: deriveDailyIntent(astrology) });
     const [desktop, mobile] = await Promise.all([
-      withPlanetOverlay(result.buffer, astrology, DESKTOP_TARGET),
-      withPlanetOverlay(result.buffer, astrology, MOBILE_TARGET),
+      withWallpaperOverlay(result.buffer, astrology, luckScore, DESKTOP_TARGET),
+      withWallpaperOverlay(result.buffer, astrology, luckScore, MOBILE_TARGET),
     ]);
     const [{ url }, { url: mobileUrl }] = await Promise.all([
       saveGeneratedFile(`${assetId}-${IMAGE_GENERATOR_VERSION}.${result.extension}`, desktop, result.contentType),

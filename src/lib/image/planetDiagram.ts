@@ -151,24 +151,22 @@ function diagramGroup(spec: DiagramSpec, x: number, y: number, size: number, ast
  * `width`x`height` canvas. The on-screen display always cover-crops this
  * canvas to fill whatever viewport it's shown in (so there's never a
  * letterboxed gap), and that viewport's real ratio isn't necessarily the
- * one this canvas was generated for -- a phone's true screen is usually
- * taller than the fixed 9:16 mobile canvas, and a desktop window can be
- * resized after generation. edgeMargin is therefore a real safety inset,
- * not just decorative spacing, sized to survive a reasonably different
- * crop, not just sit flush against this canvas's own raw edge.
+ * one this canvas was generated for -- a phone's true screen is nearly
+ * always taller than the fixed 9:16 mobile canvas (e.g. many modern phones
+ * are close to 9:20), which crops width off both sides, and a desktop
+ * window can be resized after generation. edgeMargin is therefore a real
+ * safety inset, not just decorative spacing: portrait (mobile) canvases
+ * get a bigger one since that mismatch is the norm there, not the
+ * exception.
  */
 export function buildPlanetDiagramsMarkup(astrology: StructuredAstrologyData, width: number, height: number): string {
   const size = Math.max(100, Math.min(190, Math.round(Math.min(width, height) * 0.17)));
-  const edgeMargin = Math.round(Math.min(width, height) * 0.05);
+  const isPortrait = height > width;
+  const edgeMargin = Math.round(Math.min(width, height) * (isPortrait ? 0.12 : 0.07));
 
   return DIAGRAMS.map((spec, i) => {
     const x = spec.corner.endsWith("left") ? edgeMargin : width - edgeMargin - size;
     const y = spec.corner.startsWith("top") ? edgeMargin : height - edgeMargin - size;
     return diagramGroup(spec, x, y, size, astrology, `pd${i}`);
   }).join("");
-}
-
-/** Standalone transparent SVG overlay (for compositing onto a raster image with sharp). */
-export function buildPlanetOverlaySvg(astrology: StructuredAstrologyData, width: number, height: number): string {
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${buildPlanetDiagramsMarkup(astrology, width, height)}</svg>`;
 }

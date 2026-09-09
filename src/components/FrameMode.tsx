@@ -65,16 +65,14 @@ export function FrameMode({
 
   return (
     <div ref={containerRef} className="frame-mode" onClick={onExit} role="button" tabIndex={-1} aria-label="Exit frame view">
-      <Image src={imageUrl} alt="" fill unoptimized priority className="frame-mode-image" />
-      <div className="luck-meter-panel">
-        <div className="luck-meter-label">
-          <span>Your luck today</span>
-          <strong>{luckScore}%</strong>
-        </div>
-        <div className="luck-meter" role="progressbar" aria-label="Your luck today" aria-valuemin={0} aria-valuemax={100} aria-valuenow={luckScore}>
-          <span style={{ width: `${luckScore}%` }} />
-        </div>
-      </div>
+      <Image
+        src={imageUrl}
+        alt={`Today's horoscope wallpaper. Your luck today: ${luckScore}%.`}
+        fill
+        unoptimized
+        priority
+        className="frame-mode-image"
+      />
     </div>
   );
 }

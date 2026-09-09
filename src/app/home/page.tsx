@@ -28,27 +28,21 @@ function desktopViewportRatio(): number | undefined {
   return Math.max(1, availableWidth) / Math.max(1, availableHeight);
 }
 
+// The luck-meter bar is baked into the image itself (see luckMeterOverlay.ts)
+// so it's included in downloads and frame mode too -- alt text carries the
+// score for accessibility instead of a duplicate on-page overlay.
 function HoroscopeArtwork({ imageUrl, isMobile, luckScore }: { imageUrl: string; isMobile: boolean; luckScore: number }) {
   return (
     <div className="output-frame">
       <Image
         src={imageUrl}
-        alt=""
+        alt={`Today's horoscope wallpaper. Your luck today: ${luckScore}%.`}
         width={isMobile ? 1080 : 1920}
         height={isMobile ? 1920 : 1080}
         priority
         unoptimized
         className="output-image"
       />
-      <div className="luck-meter-panel">
-        <div className="luck-meter-label">
-          <span>Your luck today</span>
-          <strong>{luckScore}%</strong>
-        </div>
-        <div className="luck-meter" role="progressbar" aria-label="Your luck today" aria-valuemin={0} aria-valuemax={100} aria-valuenow={luckScore}>
-          <span style={{ width: `${luckScore}%` }} />
-        </div>
-      </div>
     </div>
   );
 }

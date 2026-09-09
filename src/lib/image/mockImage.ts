@@ -1,6 +1,7 @@
 import { ImageStyle } from "@/types/enums";
 import { StructuredAstrologyData } from "@/lib/astrology";
 import { buildPlanetDiagramsMarkup } from "./planetDiagram";
+import { buildLuckMeterMarkup } from "./luckMeterOverlay";
 
 const WIDTH = 1080;
 const HEIGHT = 1350; // 4:5
@@ -121,6 +122,7 @@ export function generateMockHoroscopeImageSvg(opts: {
   const targetWidth = opts.target?.width ?? WIDTH;
   const targetHeight = opts.target?.height ?? HEIGHT;
   const planetDiagrams = astrology ? buildPlanetDiagramsMarkup(astrology, targetWidth, targetHeight) : "";
+  const luckMeter = buildLuckMeterMarkup(targetWidth, targetHeight, opts.luckScore);
 
   const artwork = `<defs>
     <linearGradient id="paper" x1="0" y1="0" x2="1" y2="1">
@@ -177,7 +179,7 @@ export function generateMockHoroscopeImageSvg(opts: {
   <path d="M112 1215c190-48 345 45 500-5s300-60 410 12" fill="none" stroke="#20314d" stroke-width="5" stroke-dasharray="12 20" opacity="0.55" />`;
 
   if (targetWidth === WIDTH && targetHeight === HEIGHT) {
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}">${artwork}${planetDiagrams}</svg>`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}">${artwork}${planetDiagrams}${luckMeter}</svg>`;
   }
 
   // A taller/narrower target (e.g. a phone wallpaper canvas) reuses the same
@@ -187,5 +189,6 @@ export function generateMockHoroscopeImageSvg(opts: {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${targetWidth}" height="${targetHeight}" viewBox="0 0 ${targetWidth} ${targetHeight}">
   <svg x="0" y="0" width="${targetWidth}" height="${targetHeight}" viewBox="0 0 ${WIDTH} ${HEIGHT}" preserveAspectRatio="xMidYMid slice">${artwork}</svg>
   ${planetDiagrams}
+  ${luckMeter}
 </svg>`;
 }
