@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { fromZonedTime, toZonedTime } from "date-fns-tz";
 import { useIsMobileViewport } from "@/lib/client/useIsMobileViewport";
 import Image from "next/image";
 import { NavBar } from "@/components/NavBar";
@@ -28,18 +29,24 @@ function desktopViewportRatio(): number | undefined {
   return Math.max(1, availableWidth) / Math.max(1, availableHeight);
 }
 
-// A day's horoscope is keyed by UTC calendar date server-side, so it's
-// already correct to regenerate the instant the date rolls over -- not on
-// a rolling "24h since this tab last checked" schedule, which could sit on
-// yesterday's wallpaper for up to 24h after midnight if the tab happened to
-// load a couple hours into the previous day. A little buffer past midnight
-// avoids a request landing a few seconds early due to clock skew.
+// A day's horoscope is keyed by the user's own local calendar date
+// server-side (see todayForTimezone), so it's already correct to
+// regenerate the instant that date rolls over -- not on a rolling "24h
+// since this tab last checked" schedule, which could sit on yesterday's
+// wallpaper for up to 24h after midnight if the tab happened to load a
+// couple hours into the previous day. A little buffer past midnight avoids
+// a request landing a few seconds early due to clock skew.
 const MIDNIGHT_BUFFER_MS = 60_000;
 
-function msUntilNextUtcMidnight(): number {
+function msUntilNextDayBoundary(timezone: string): number {
   const now = new Date();
-  const nextMidnight = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0, 0);
-  return nextMidnight - now.getTime() + MIDNIGHT_BUFFER_MS;
+  const zoned = toZonedTime(now, timezone);
+  // Date.UTC normalizes month/year rollover for us; only used to get the
+  // next day's y/m/d, not as a real instant.
+  const next = new Date(Date.UTC(zoned.getFullYear(), zoned.getMonth(), zoned.getDate() + 1));
+  const nextMidnightWallClock = `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}-${String(next.getUTCDate()).padStart(2, "0")}T00:00:00`;
+  const nextMidnightUtc = fromZonedTime(nextMidnightWallClock, timezone);
+  return nextMidnightUtc.getTime() - now.getTime() + MIDNIGHT_BUFFER_MS;
 }
 
 // The luck-meter bar is baked into the image itself (see luckMeterOverlay.ts)
@@ -76,12 +83,12 @@ export default function HomePage() {
       .catch(() => setProfile(null));
   }, []);
 
-  // Checks in at the next UTC day boundary so a new day's horoscope picks
-  // up on its own, whether the app's been sitting open for 2 hours or 20;
-  // the endpoint is idempotent for the current day, so this is a no-op
-  // until the date actually rolls over. Reschedules itself off a freshly
-  // computed delay each time rather than a flat 24h interval, so it can't
-  // drift away from the actual boundary.
+  // Checks in at the next day boundary (in the profile's own timezone) so a
+  // new day's horoscope picks up on its own, whether the app's been sitting
+  // open for 2 hours or 20; the endpoint is idempotent for the current day,
+  // so this is a no-op until the date actually rolls over. Reschedules
+  // itself off a freshly computed delay each time rather than a flat 24h
+  // interval, so it can't drift away from the actual boundary.
   const refreshHoroscope = useCallback(async () => {
     try {
       const { horoscope: latest } = await apiFetch<{ horoscope: HoroscopeDTO }>("/api/horoscope/generate", {
@@ -95,16 +102,18 @@ export default function HomePage() {
   }, [isMobile]);
 
   useEffect(() => {
+    const timezone = profile?.timezone;
+    if (!timezone) return;
     let timeoutId: ReturnType<typeof setTimeout>;
     const scheduleNext = () => {
       timeoutId = setTimeout(() => {
         refreshHoroscope();
         scheduleNext();
-      }, msUntilNextUtcMidnight());
+      }, msUntilNextDayBoundary(timezone));
     };
     scheduleNext();
     return () => clearTimeout(timeoutId);
-  }, [refreshHoroscope]);
+  }, [refreshHoroscope, profile?.timezone]);
 
   async function handleSaved(savedProfile: BirthProfileDTO) {
     setProfile(savedProfile);

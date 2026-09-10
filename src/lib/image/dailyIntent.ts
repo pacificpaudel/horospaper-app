@@ -21,6 +21,11 @@ export function deriveDailyIntent(astrology: StructuredAstrologyData): DailyInte
   };
 }
 
+// Searching Openverse on all 4 keyword phrases at once (mood + light +
+// movement + reflection, several words each) over-constrains the query and
+// tends to return sparse or off-theme results. Mood and light alone are the
+// most visually concrete of the four and searchable on their own.
 export function dailyIntentQuery(intent: DailyIntent): string {
-  return `${intent.keywords.join(" ")} human emotion reflection fine art mixed media`;
+  const [mood, light] = intent.keywords;
+  return `${mood} ${light} human emotion reflection fine art mixed media`;
 }

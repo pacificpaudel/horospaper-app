@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/session";
 import { getBirthProfile } from "@/lib/profile";
 import { generateHoroscopeForUser, getExistingHoroscope, HoroscopeGenerationError } from "@/lib/horoscope";
 import { canConsumeGeneration, consumeGeneration, getFreeLimit, getUsageCount } from "@/lib/usage";
+import { todayForTimezone } from "@/lib/timezoneDay";
 
 /**
  * Generates today's horoscope (or tomorrow's preview when { preview: true }
@@ -26,7 +27,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Please complete your birth profile first" }, { status: 400 });
   }
 
-  const targetDate = new Date();
+  // Anchored to the user's own timezone (from their birth profile) so "today"
+  // means their local calendar day, not the server's UTC day -- otherwise
+  // anyone well ahead of UTC would keep getting yesterday's horoscope/
+  // wallpaper for hours after their own day has already started.
+  const targetDate = todayForTimezone(new Date(), profile.timezone);
   if (preview) targetDate.setUTCDate(targetDate.getUTCDate() + 1);
 
   const existing = await getExistingHoroscope(user.id, targetDate, preview);
