@@ -28,6 +28,20 @@ function desktopViewportRatio(): number | undefined {
   return Math.max(1, availableWidth) / Math.max(1, availableHeight);
 }
 
+// A day's horoscope is keyed by UTC calendar date server-side, so it's
+// already correct to regenerate the instant the date rolls over -- not on
+// a rolling "24h since this tab last checked" schedule, which could sit on
+// yesterday's wallpaper for up to 24h after midnight if the tab happened to
+// load a couple hours into the previous day. A little buffer past midnight
+// avoids a request landing a few seconds early due to clock skew.
+const MIDNIGHT_BUFFER_MS = 60_000;
+
+function msUntilNextUtcMidnight(): number {
+  const now = new Date();
+  const nextMidnight = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0, 0);
+  return nextMidnight - now.getTime() + MIDNIGHT_BUFFER_MS;
+}
+
 // The luck-meter bar is baked into the image itself (see luckMeterOverlay.ts)
 // so it's included in downloads and frame mode too -- alt text carries the
 // score for accessibility instead of a duplicate on-page overlay.
@@ -62,9 +76,12 @@ export default function HomePage() {
       .catch(() => setProfile(null));
   }, []);
 
-  // Left running in frame mode, checks in once a day so a new day's
-  // horoscope picks up on its own; the endpoint is idempotent for the
-  // current day, so this is a no-op until the date actually rolls over.
+  // Checks in at the next UTC day boundary so a new day's horoscope picks
+  // up on its own, whether the app's been sitting open for 2 hours or 20;
+  // the endpoint is idempotent for the current day, so this is a no-op
+  // until the date actually rolls over. Reschedules itself off a freshly
+  // computed delay each time rather than a flat 24h interval, so it can't
+  // drift away from the actual boundary.
   const refreshHoroscope = useCallback(async () => {
     try {
       const { horoscope: latest } = await apiFetch<{ horoscope: HoroscopeDTO }>("/api/horoscope/generate", {
@@ -73,9 +90,21 @@ export default function HomePage() {
       });
       setHoroscope(latest);
     } catch {
-      // A frame left running unattended shouldn't surface an error state.
+      // Left running unattended, this shouldn't surface an error state.
     }
   }, [isMobile]);
+
+  useEffect(() => {
+    let timeoutId: ReturnType<typeof setTimeout>;
+    const scheduleNext = () => {
+      timeoutId = setTimeout(() => {
+        refreshHoroscope();
+        scheduleNext();
+      }, msUntilNextUtcMidnight());
+    };
+    scheduleNext();
+    return () => clearTimeout(timeoutId);
+  }, [refreshHoroscope]);
 
   async function handleSaved(savedProfile: BirthProfileDTO) {
     setProfile(savedProfile);
@@ -99,7 +128,7 @@ export default function HomePage() {
     const imageUrl = (isMobile && horoscope.imageUrlMobile) || horoscope.imageUrl;
 
     if (frameMode) {
-      return <FrameMode imageUrl={imageUrl} luckScore={luckScore} onRefresh={refreshHoroscope} onExit={() => setFrameMode(false)} />;
+      return <FrameMode imageUrl={imageUrl} luckScore={luckScore} onExit={() => setFrameMode(false)} />;
     }
 
     return (

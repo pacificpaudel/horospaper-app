@@ -3,7 +3,6 @@
 import { useEffect, useRef } from "react";
 import Image from "next/image";
 
-const REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const WAKE_LOCK_RETRY_MS = 20 * 1000;
 
 // A 1-second, 2x2, silent black clip. Some browsers (older Safari, Firefox,
@@ -21,18 +20,18 @@ const KEEP_AWAKE_VIDEO_SRC =
  * fullscreen, a screen wake lock (re-acquired periodically and on
  * visibility regain), and loops a muted keep-awake video as a fallback for
  * browsers without Wake Lock support -- together these keep the display
- * from timing out or a screensaver from taking over. Also polls the
- * horoscope endpoint once a day so a new day's image picks up on its own.
+ * from timing out or a screensaver from taking over. The parent page (not
+ * this component) is what checks in at the next day boundary so a new
+ * day's image picks up on its own, since that scheduler needs to keep
+ * running whether or not frame mode happens to be open at the time.
  */
 export function FrameMode({
   imageUrl,
   luckScore,
-  onRefresh,
   onExit,
 }: {
   imageUrl: string;
   luckScore: number;
-  onRefresh: () => void;
   onExit: () => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -89,11 +88,6 @@ export function FrameMode({
   useEffect(() => {
     videoRef.current?.play().catch(() => {});
   }, []);
-
-  useEffect(() => {
-    const id = setInterval(onRefresh, REFRESH_INTERVAL_MS);
-    return () => clearInterval(id);
-  }, [onRefresh]);
 
   return (
     <div ref={containerRef} className="frame-mode" onClick={onExit} role="button" tabIndex={-1} aria-label="Exit frame view">
