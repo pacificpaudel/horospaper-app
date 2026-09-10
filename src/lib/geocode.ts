@@ -26,7 +26,13 @@ async function timezoneForCoordinates(lat: number, lon: number): Promise<string>
   // timezone lookup service isn't configured. Good enough for MVP display;
   // does not account for DST or political timezone boundaries.
   const offsetHours = Math.round(lon / 15);
-  const sign = offsetHours >= 0 ? "+" : "-";
+  // POSIX's Etc/GMT zones use inverted signs vs. common usage: Etc/GMT-6 is
+  // UTC+6 (east of Greenwich), Etc/GMT+6 is UTC-6. Using the "intuitive"
+  // sign here silently flipped every non-zero offset, which threw off both
+  // birth-chart math (via birthDateTimeToUtc) and "today" for any location
+  // more than a few degrees of longitude from 0 -- e.g. it labeled Kathmandu
+  // (UTC+5:45, east) as 6 hours *behind* UTC instead of ahead.
+  const sign = offsetHours >= 0 ? "-" : "+";
   return `Etc/GMT${sign}${Math.abs(offsetHours)}`;
 }
 
@@ -55,8 +61,14 @@ async function fetchFromNominatim(query: string): Promise<GeocodeResult | null> 
   return { latitude, longitude, timezone, label: display_name };
 }
 
+// Bumped to invalidate cached results computed with the pre-fix (sign-
+// inverted) timezoneForCoordinates -- without this, anyone whose birth
+// location was geocoded in the last 24h keeps getting the old wrong
+// timezone back from cache even after the fix ships.
+const GEOCODE_CACHE_VERSION = "v2";
+
 function geocodeKey(query: string): string {
-  return `geocode:${query.toLowerCase()}`;
+  return `geocode:${GEOCODE_CACHE_VERSION}:${query.toLowerCase()}`;
 }
 
 /**
