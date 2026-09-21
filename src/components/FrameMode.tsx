@@ -17,10 +17,14 @@ const KEEP_AWAKE_VIDEO_SRC =
 /**
  * Fullscreen kiosk view for leaving the wallpaper running on a spare
  * tablet/monitor as a digital picture frame. Requests real Fullscreen API
- * fullscreen, a screen wake lock (re-acquired periodically and on
+ * fullscreen (silently re-requesting it whenever the browser force-exits it
+ * on its own -- an OS screen lock, a permission prompt, background-tab
+ * power saving, waking from sleep -- rather than treating that as the user
+ * wanting out), a screen wake lock (re-acquired periodically and on
  * visibility regain), and loops a muted keep-awake video as a fallback for
  * browsers without Wake Lock support -- together these keep the display
- * from timing out or a screensaver from taking over. The parent page (not
+ * from timing out or a screensaver from taking over. Clicking anywhere on
+ * the frame is the only way this view actually exits. The parent page (not
  * this component) is what checks in at the next day boundary so a new
  * day's image picks up on its own, since that scheduler needs to keep
  * running whether or not frame mode happens to be open at the time.
@@ -39,15 +43,28 @@ export function FrameMode({
 
   useEffect(() => {
     containerRef.current?.requestFullscreen?.().catch(() => {});
-    const onFullscreenChange = () => {
-      if (!document.fullscreenElement) onExit();
+    // Native fullscreen gets force-exited by the browser for all sorts of
+    // involuntary reasons on a device left running unattended -- an OS
+    // screen lock, a permission/notification prompt, some browsers'
+    // background-tab power saving, or just waking from sleep. Treating any
+    // of those the same as "the user wants out" (by calling onExit here)
+    // is what was kicking the kiosk back to the setup page on its own.
+    // Instead, silently try to re-enter fullscreen; if that's refused
+    // (most browsers require a fresh user gesture, which none of the above
+    // triggers have), the .frame-mode CSS below still covers the full
+    // viewport on its own, so the wallpaper keeps showing either way.
+    // Explicitly clicking the frame (see onClick={onExit} below) is the
+    // only way this view actually exits.
+    const tryReenterFullscreen = () => {
+      if (!document.fullscreenElement) containerRef.current?.requestFullscreen?.().catch(() => {});
     };
-    document.addEventListener("fullscreenchange", onFullscreenChange);
+    document.addEventListener("fullscreenchange", tryReenterFullscreen);
+    document.addEventListener("visibilitychange", tryReenterFullscreen);
     return () => {
-      document.removeEventListener("fullscreenchange", onFullscreenChange);
+      document.removeEventListener("fullscreenchange", tryReenterFullscreen);
+      document.removeEventListener("visibilitychange", tryReenterFullscreen);
       if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -87,6 +104,14 @@ export function FrameMode({
 
   useEffect(() => {
     videoRef.current?.play().catch(() => {});
+    // Browsers commonly pause a background tab's video -- resume it
+    // whenever the tab becomes visible again, so the keep-awake trick
+    // doesn't quietly stop working after the device wakes from sleep.
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") videoRef.current?.play().catch(() => {});
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
   }, []);
 
   return (
