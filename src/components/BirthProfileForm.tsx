@@ -11,10 +11,32 @@ export interface BirthProfileFormValues {
   birthDate: string;
   birthTimePeriod: "MORNING" | "DAY" | "EVENING" | "NIGHT";
   birthLocation: string;
+  timezone: string;
   astrologySystem: "VEDIC";
   language: "EN" | "NE" | "FI";
   imageStyle: "MIXED_MEDIA";
 }
+
+// A small, environment-independent fallback for browsers/runtimes without
+// Intl.supportedValuesOf (older Safari) -- the primary path below covers
+// virtually everyone in practice.
+const FALLBACK_TIMEZONES = [
+  "UTC", "Asia/Kathmandu", "Asia/Kolkata", "Asia/Dhaka", "Asia/Bangkok", "Asia/Shanghai",
+  "Asia/Tokyo", "Asia/Dubai", "Australia/Sydney", "Europe/Helsinki", "Europe/London",
+  "Europe/Paris", "Europe/Moscow", "America/New_York", "America/Chicago", "America/Denver",
+  "America/Los_Angeles", "America/Sao_Paulo", "Africa/Cairo", "Africa/Johannesburg", "Pacific/Auckland",
+];
+
+function listTimeZones(): string[] {
+  try {
+    const zones = Intl.supportedValuesOf?.("timeZone");
+    return zones && zones.length ? zones : FALLBACK_TIMEZONES;
+  } catch {
+    return FALLBACK_TIMEZONES;
+  }
+}
+
+const TIMEZONES = listTimeZones();
 
 const BIRTH_TIME_PERIODS = [
   { value: "MORNING", label: "Morning", detail: "5:00 – 11:59" },
@@ -39,6 +61,12 @@ function defaultsFrom(profile?: BirthProfileDTO | null): BirthProfileFormValues 
     birthDate: profile?.birthDate?.slice(0, 10) ?? "",
     birthTimePeriod: periodFromTime(profile?.birthTime),
     birthLocation: profile?.birthLocation ?? "",
+    // The parent only renders this form once it already knows whether a
+    // profile exists (see HomePage's `profile === undefined` loading gate),
+    // so this never actually runs during the server-rendered pass -- safe
+    // to read the browser's own timezone directly as the default for a new
+    // profile, with no hydration-mismatch risk.
+    timezone: profile?.timezone ?? (typeof window !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : ""),
     astrologySystem: "VEDIC",
     language: profile?.language ?? "EN",
     imageStyle: "MIXED_MEDIA",
@@ -70,6 +98,7 @@ export function BirthProfileForm({
   function validate(): boolean {
     const next: Record<string, string> = {};
     if (!values.birthDate) next.birthDate = "Date of birth is required";
+    if (!values.timezone) next.timezone = "Timezone is required";
     if (!values.birthTimePeriod) next.birthTimePeriod = "Time of birth is required";
     if (!values.birthLocation.trim()) next.birthLocation = "Birth location is required";
     setErrors(next);
@@ -139,6 +168,13 @@ export function BirthProfileForm({
         />
       </Field>
 
+      <Field label="Timezone" error={errors.timezone}>
+        <select value={values.timezone} onChange={(e) => set("timezone", e.target.value)} className="input" required>
+          {!values.timezone && <option value="">Select timezone</option>}
+          {TIMEZONES.map((tz) => <option key={tz} value={tz}>{tz}</option>)}
+        </select>
+      </Field>
+
       <Field label="View as">
         <select value={viewMode} onChange={(e) => onViewModeChange(e.target.value as ViewMode)} className="input">
           <option value="DESKTOP">Desktop</option>
@@ -155,7 +191,7 @@ export function BirthProfileForm({
       <style jsx>{`
         :global(.birth-strip) {
           display: grid;
-          grid-template-columns: repeat(5, minmax(0, 1fr)) auto;
+          grid-template-columns: repeat(6, minmax(0, 1fr)) auto;
           align-items: end;
           gap: 0.65rem;
           width: 100%;
@@ -169,9 +205,12 @@ export function BirthProfileForm({
         :global(.birth-strip .input) { min-width: 0; width: 100%; }
         :global(.birth-submit) { white-space: nowrap; min-height: 2.65rem; }
         :global(.birth-error) { grid-column: 1 / -1; }
+        @media (max-width: 1080px) {
+          :global(.birth-strip) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+          :global(.birth-submit) { grid-column: 1 / -1; }
+        }
         @media (max-width: 900px) {
           :global(.birth-strip) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-          :global(.birth-submit) { grid-column: 1 / -1; }
         }
         @media (max-width: 430px) {
           :global(.birth-strip) { grid-template-columns: 1fr; }

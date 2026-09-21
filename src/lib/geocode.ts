@@ -3,37 +3,21 @@ import { redis, TTL_SECONDS } from "@/lib/redis";
 export interface GeocodeResult {
   latitude: number;
   longitude: number;
-  timezone: string;
   label: string;
 }
 
 // Small offline fallback so the app keeps working in dev with no network
 // access. Real lookups go through OpenStreetMap Nominatim (free, no API key).
 const OFFLINE_CITY_FALLBACK: Record<string, GeocodeResult> = {
-  "kathmandu, nepal": { latitude: 27.7172, longitude: 85.324, timezone: "Asia/Kathmandu", label: "Kathmandu, Nepal" },
-  "helsinki, finland": { latitude: 60.1699, longitude: 24.9384, timezone: "Europe/Helsinki", label: "Helsinki, Finland" },
-  "new york, usa": { latitude: 40.7128, longitude: -74.006, timezone: "America/New_York", label: "New York, USA" },
-  "london, uk": { latitude: 51.5072, longitude: -0.1276, timezone: "Europe/London", label: "London, UK" },
+  "kathmandu, nepal": { latitude: 27.7172, longitude: 85.324, label: "Kathmandu, Nepal" },
+  "helsinki, finland": { latitude: 60.1699, longitude: 24.9384, label: "Helsinki, Finland" },
+  "new york, usa": { latitude: 40.7128, longitude: -74.006, label: "New York, USA" },
+  "london, uk": { latitude: 51.5072, longitude: -0.1276, label: "London, UK" },
 };
 
 function offlineLookup(query: string): GeocodeResult | null {
   const key = query.trim().toLowerCase();
   return OFFLINE_CITY_FALLBACK[key] ?? null;
-}
-
-async function timezoneForCoordinates(lat: number, lon: number): Promise<string> {
-  // Rough longitude-based UTC offset estimate, used only when a proper
-  // timezone lookup service isn't configured. Good enough for MVP display;
-  // does not account for DST or political timezone boundaries.
-  const offsetHours = Math.round(lon / 15);
-  // POSIX's Etc/GMT zones use inverted signs vs. common usage: Etc/GMT-6 is
-  // UTC+6 (east of Greenwich), Etc/GMT+6 is UTC-6. Using the "intuitive"
-  // sign here silently flipped every non-zero offset, which threw off both
-  // birth-chart math (via birthDateTimeToUtc) and "today" for any location
-  // more than a few degrees of longitude from 0 -- e.g. it labeled Kathmandu
-  // (UTC+5:45, east) as 6 hours *behind* UTC instead of ahead.
-  const sign = offsetHours >= 0 ? "-" : "+";
-  return `Etc/GMT${sign}${Math.abs(offsetHours)}`;
 }
 
 async function fetchFromNominatim(query: string): Promise<GeocodeResult | null> {
@@ -54,11 +38,7 @@ async function fetchFromNominatim(query: string): Promise<GeocodeResult | null> 
   if (!results.length) return null;
 
   const { lat, lon, display_name } = results[0];
-  const latitude = parseFloat(lat);
-  const longitude = parseFloat(lon);
-  const timezone = await timezoneForCoordinates(latitude, longitude);
-
-  return { latitude, longitude, timezone, label: display_name };
+  return { latitude: parseFloat(lat), longitude: parseFloat(lon), label: display_name };
 }
 
 // Bumped to invalidate cached results computed with the pre-fix (sign-
@@ -72,9 +52,11 @@ function geocodeKey(query: string): string {
 }
 
 /**
- * Resolves a free-text birth location into coordinates + timezone,
- * caching results for 24h so repeat lookups (very common -- many people
- * share a birth city) don't hit the network every time.
+ * Resolves a free-text birth location into coordinates, caching results for
+ * 24h so repeat lookups (very common -- many people share a birth city)
+ * don't hit the network every time. Timezone is no longer derived from
+ * this -- it's picked directly by the user in the birth-profile form (see
+ * BirthProfileInputSchema).
  */
 export async function geocodeLocation(query: string): Promise<GeocodeResult> {
   const normalized = query.trim();

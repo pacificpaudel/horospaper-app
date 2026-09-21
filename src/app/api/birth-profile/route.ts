@@ -39,7 +39,9 @@ export async function POST(request: NextRequest) {
     birthLocation: geo.label,
     latitude: geo.latitude,
     longitude: geo.longitude,
-    timezone: geo.timezone,
+    // User-picked directly in the form now, not estimated from the
+    // geocoded location's longitude -- see BirthProfileInputSchema.
+    timezone: input.timezone,
     astrologySystem: "VEDIC",
     language: input.language,
     imageStyle: "MIXED_MEDIA",
