@@ -28,31 +28,33 @@ export async function generateOpenverseImage(params: {
   stableSeed: string;
   intent: DailyIntent;
   /**
-   * True for an explicit user-requested regeneration. The primary
-   * daily-intent query almost always comes back empty (it's over-specific),
-   * so in practice nearly every call falls through to the same broad
-   * `${mood} human emotion art` query -- and Openverse returns a stable
-   * top-N ranking for a fixed query, so that's a small, unchanging pool of
-   * ~20 photos shared by everyone with that mood. Fetching a randomized
-   * page instead of always page 1 draws from a much larger effective pool,
-   * and picking the final image with real randomness (rather than
+   * True for an explicit user-requested regeneration. Fetching a randomized
+   * page instead of always page 1 draws from a larger effective pool, and
+   * picking the final image with real randomness (rather than
    * hash(stableSeed), which is deterministic given the same inputs) removes
    * any chance of two regenerations landing on the same photo by design.
    */
   randomize?: boolean;
 }): Promise<{ buffer: Buffer; contentType: string; extension: string; prompt: string }> {
   const query = dailyIntentQuery(params.intent);
-  const queries = [
-    query,
-    `${params.intent.keywords[0]} human emotion art`,
-    `${params.intent.keywords[0]} ${params.intent.keywords[3]} mixed media`,
-  ];
+  const mood = params.intent.keywords[0];
+  // The most specific query is tried first for the best thematic match, but
+  // measuring live result counts showed it (and the "human emotion art"
+  // fallback) can collapse to a tiny pool depending on mood -- for
+  // mood="joyful" specifically, "joyful human emotion art" returns exactly
+  // ONE photo in the whole Openverse index, so every "joyful" user was
+  // always getting that same single image no matter how the final pick was
+  // randomized. "${mood} art" reliably returns Openverse's full page of
+  // results for every mood, so it's kept as a guaranteed-large last resort.
+  const queries = [query, `${mood} human emotion art`, `${mood} art`];
+  const MIN_GOOD_POOL_SIZE = 15;
   const page = params.randomize ? 1 + Math.floor(Math.random() * 5) : 1;
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
   async function search(pageNumber: number): Promise<OpenverseResult[]> {
+    let best: OpenverseResult[] = [];
     for (const searchQuery of queries) {
       const requestUrl = new URL(OPENVERSE_API);
       requestUrl.searchParams.set("q", searchQuery);
@@ -66,9 +68,12 @@ export async function generateOpenverseImage(params: {
       if (!response.ok) throw new Error(`Openverse search failed (${response.status})`);
       const payload = (await response.json()) as OpenverseResponse;
       const usable = (payload.results ?? []).filter((result) => result.url && result.width && result.height);
-      if (usable.length) return usable;
+      if (usable.length > best.length) best = usable;
+      // Stop once a query returns a healthy pool -- no need to keep
+      // querying just to chase the guaranteed-broad last resort every time.
+      if (best.length >= MIN_GOOD_POOL_SIZE) break;
     }
-    return [];
+    return best;
   }
 
   try {
