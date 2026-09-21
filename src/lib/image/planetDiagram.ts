@@ -149,25 +149,25 @@ function diagramGroup(spec: DiagramSpec, x: number, y: number, size: number, ast
 /**
  * Returns the 4 corner planet-position diagrams as SVG markup for a
  * `width`x`height` canvas. On the desktop (landscape) canvas the diagrams
- * sit flush against the left/right edges -- like they're mounted on the
- * two side walls of the frame -- since the desktop output page and frame
- * mode both show this canvas with object-fit: contain (never cropped), so
- * there's no more need for a horizontal safety inset there. The portrait
- * (mobile) canvas keeps its inset: it's still cover-cropped by some native
- * OS "set as wallpaper" flows outside this app's own display, where a
- * phone's true screen ratio commonly doesn't match this fixed canvas. A
- * vertical margin is always kept so the diagrams stay clear of the date
- * header (dateHeaderOverlay.ts) and luck meter (luckMeterOverlay.ts).
+ * sit flush against all 4 edges -- like they're mounted directly on the
+ * frame's walls -- since the desktop output page and frame mode both show
+ * this canvas with object-fit: contain (never cropped), so there's no more
+ * need for a safety inset there. This doesn't collide with the date header
+ * or luck meter: both are horizontally centered (dateHeaderOverlay.ts,
+ * luckMeterOverlay.ts) while the diagrams sit out at the far corners. The
+ * portrait (mobile) canvas keeps its inset on all sides: it's still
+ * cover-cropped by some native OS "set as wallpaper" flows outside this
+ * app's own display, where a phone's true screen ratio commonly doesn't
+ * match this fixed canvas.
  */
 export function buildPlanetDiagramsMarkup(astrology: StructuredAstrologyData, width: number, height: number): string {
   const size = Math.max(100, Math.min(190, Math.round(Math.min(width, height) * 0.17)));
   const isPortrait = height > width;
-  const verticalMargin = Math.round(Math.min(width, height) * (isPortrait ? 0.12 : 0.07));
-  const horizontalMargin = isPortrait ? verticalMargin : 0;
+  const margin = isPortrait ? Math.round(Math.min(width, height) * 0.12) : 0;
 
   return DIAGRAMS.map((spec, i) => {
-    const x = spec.corner.endsWith("left") ? horizontalMargin : width - horizontalMargin - size;
-    const y = spec.corner.startsWith("top") ? verticalMargin : height - verticalMargin - size;
+    const x = spec.corner.endsWith("left") ? margin : width - margin - size;
+    const y = spec.corner.startsWith("top") ? margin : height - margin - size;
     return diagramGroup(spec, x, y, size, astrology, `pd${i}`);
   }).join("");
 }
