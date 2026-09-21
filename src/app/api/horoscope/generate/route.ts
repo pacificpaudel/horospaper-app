@@ -39,16 +39,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ horoscope: existing, cached: true });
   }
 
-  const isFirstGenerationToday = !preview && (await getUsageCount(user.id)) === 0;
+  // Scoped to targetDate (the user's own local day), matching the horoscope
+  // cache lookup above -- not the server's raw UTC "now". Otherwise a
+  // non-UTC user's automatic midnight refresh could see a stale usage count
+  // left over from the previous UTC day and get wrongly rejected here,
+  // silently blocking the new day's wallpaper from ever being generated.
+  const isFirstGenerationToday = !preview && (await getUsageCount(user.id, targetDate)) === 0;
   if (!isFirstGenerationToday) {
-    const allowed = await canConsumeGeneration(user.id);
+    const allowed = await canConsumeGeneration(user.id, targetDate);
     if (!allowed) {
       return NextResponse.json(
         { error: `You've reached today's limit of ${getFreeLimit()} extra generation(s). Come back tomorrow!` },
         { status: 429 }
       );
     }
-    await consumeGeneration(user.id);
+    await consumeGeneration(user.id, targetDate);
   }
 
   try {
