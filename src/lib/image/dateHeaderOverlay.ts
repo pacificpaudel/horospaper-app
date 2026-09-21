@@ -45,7 +45,11 @@ function fitSize(text: string, idealSize: number, maxWidth: number, style: TextS
  * semi-transparent and centered at the top of a `width`x`height` canvas --
  * the day name reads as the "header" of this block and the date as its
  * smaller "footer" line, with a generous multi-line gap between them so the
- * pair reads as an intentional masthead rather than a cramped stack.
+ * pair reads as an intentional masthead rather than a cramped stack. A soft
+ * dark backdrop panel sits behind both lines -- the same technique
+ * buildLuckMeterMarkup already uses for its percentage -- so the text stays
+ * legible over any photo, not just the ones dark enough for colored strokes
+ * to show up well on their own.
  */
 export function buildDateHeaderMarkup(width: number, height: number, generationDate: string): string {
   const { weekday, dateLine } = describeDate(generationDate);
@@ -53,8 +57,8 @@ export function buildDateHeaderMarkup(width: number, height: number, generationD
   const centerX = width / 2;
   const safeWidth = width * 0.82;
 
-  const weekdayStyle: TextStyle = { color: "#39e991", opacity: 0.82, strokeWidth: 0.09, tracking: 0.34 };
-  const dateStyle: TextStyle = { color: "#4fb8f7", opacity: 0.85, strokeWidth: 0.1, tracking: 0.28 };
+  const weekdayStyle: TextStyle = { color: "#39e991", opacity: 0.92, strokeWidth: 0.09, tracking: 0.34 };
+  const dateStyle: TextStyle = { color: "#4fb8f7", opacity: 0.94, strokeWidth: 0.1, tracking: 0.28 };
 
   const weekdaySize = fitSize(weekday, minDim * 0.05, safeWidth, weekdayStyle);
   const dateSize = fitSize(dateLine, minDim * 0.022, safeWidth, dateStyle);
@@ -62,7 +66,16 @@ export function buildDateHeaderMarkup(width: number, height: number, generationD
   const topMargin = Math.round(minDim * 0.05);
   const dateY = topMargin + weekdaySize + dateSize * 2; // ~2 lines' gap below the weekday name
 
+  const blockWidth = Math.max(measureVectorText(weekday, weekdaySize, weekdayStyle), measureVectorText(dateLine, dateSize, dateStyle));
+  const padX = Math.round(dateSize * 1.3);
+  const padTop = Math.round(dateSize * 1.1);
+  const padBottom = Math.round(dateSize * 1.1);
+  const backdropTop = topMargin - padTop;
+  const backdropBottom = dateY + dateSize + padBottom;
+  const backdrop = `<rect x="${(centerX - blockWidth / 2 - padX).toFixed(1)}" y="${backdropTop.toFixed(1)}" width="${(blockWidth + padX * 2).toFixed(1)}" height="${(backdropBottom - backdropTop).toFixed(1)}" rx="${(dateSize * 0.9).toFixed(1)}" fill="#0b1220" fill-opacity="0.48" />`;
+
   return [
+    backdrop,
     buildCenteredVectorTextMarkup(weekday, centerX, topMargin, weekdaySize, weekdayStyle),
     buildCenteredVectorTextMarkup(dateLine, centerX, dateY, dateSize, dateStyle),
   ].join("");
