@@ -1,4 +1,5 @@
 import { buildCenteredVectorTextMarkup, measureVectorText, TextStyle } from "./vectorFont";
+import { DailyIntent } from "./dailyIntent";
 
 const WEEKDAYS = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
 const MONTHS = [
@@ -41,17 +42,34 @@ function fitSize(text: string, idealSize: number, maxWidth: number, style: TextS
 }
 
 /**
+ * A rounded dark backdrop rect spanning [top, bottom], wide enough for
+ * `contentWidth` -- the same legibility technique buildLuckMeterMarkup
+ * already uses for its percentage. `size` only drives the horizontal
+ * padding and corner radius, so it should be the size of the largest text
+ * line the panel covers.
+ */
+function panelRect(contentWidth: number, centerX: number, top: number, bottom: number, size: number): string {
+  const padX = Math.round(size * 1.3);
+  return `<rect x="${(centerX - contentWidth / 2 - padX).toFixed(1)}" y="${top.toFixed(1)}" width="${(contentWidth + padX * 2).toFixed(1)}" height="${(bottom - top).toFixed(1)}" rx="${(size * 0.9).toFixed(1)}" fill="#0b1220" fill-opacity="0.48" />`;
+}
+
+/**
  * Draws the weekday name and a small "1st of Month Year" line, artistically
  * semi-transparent and centered at the top of a `width`x`height` canvas --
  * the day name reads as the "header" of this block and the date as its
  * smaller "footer" line, with a generous multi-line gap between them so the
  * pair reads as an intentional masthead rather than a cramped stack. A soft
- * dark backdrop panel sits behind both lines -- the same technique
- * buildLuckMeterMarkup already uses for its percentage -- so the text stays
- * legible over any photo, not just the ones dark enough for colored strokes
- * to show up well on their own.
+ * dark backdrop panel sits behind both lines so the text stays legible over
+ * any photo, not just the ones dark enough for colored strokes to show up
+ * well on their own.
+ *
+ * When `intent` is given (the day's astronomically-derived mood + light,
+ * from deriveDailyIntent), a second, separate panel is drawn just below the
+ * date -- same vector font and proportions as the date line, in gold
+ * instead of blue, reading as a distinct "today's intent" callout rather
+ * than part of the date itself.
  */
-export function buildDateHeaderMarkup(width: number, height: number, generationDate: string): string {
+export function buildDateHeaderMarkup(width: number, height: number, generationDate: string, intent?: DailyIntent): string {
   const { weekday, dateLine } = describeDate(generationDate);
   const minDim = Math.min(width, height);
   const centerX = width / 2;
@@ -67,16 +85,29 @@ export function buildDateHeaderMarkup(width: number, height: number, generationD
   const dateY = topMargin + weekdaySize + dateSize * 2; // ~2 lines' gap below the weekday name
 
   const blockWidth = Math.max(measureVectorText(weekday, weekdaySize, weekdayStyle), measureVectorText(dateLine, dateSize, dateStyle));
-  const padX = Math.round(dateSize * 1.3);
   const padTop = Math.round(dateSize * 1.1);
   const padBottom = Math.round(dateSize * 1.1);
   const backdropTop = topMargin - padTop;
   const backdropBottom = dateY + dateSize + padBottom;
-  const backdrop = `<rect x="${(centerX - blockWidth / 2 - padX).toFixed(1)}" y="${backdropTop.toFixed(1)}" width="${(blockWidth + padX * 2).toFixed(1)}" height="${(backdropBottom - backdropTop).toFixed(1)}" rx="${(dateSize * 0.9).toFixed(1)}" fill="#0b1220" fill-opacity="0.48" />`;
+  const backdrop = panelRect(blockWidth, centerX, backdropTop, backdropBottom, dateSize);
 
-  return [
+  const markup = [
     backdrop,
     buildCenteredVectorTextMarkup(weekday, centerX, topMargin, weekdaySize, weekdayStyle),
     buildCenteredVectorTextMarkup(dateLine, centerX, dateY, dateSize, dateStyle),
-  ].join("");
+  ];
+
+  if (intent) {
+    const intentText = `${intent.keywords[0]} ${intent.keywords[1]}`.toUpperCase();
+    const intentStyle: TextStyle = { ...dateStyle, color: "#f7c56a" };
+    const intentSize = fitSize(intentText, dateSize, safeWidth, intentStyle);
+    const intentY = backdropBottom + Math.round(intentSize * 1.4);
+    const intentPadTop = Math.round(intentSize * 1.1);
+    const intentPadBottom = Math.round(intentSize * 1.1);
+    const intentWidth = measureVectorText(intentText, intentSize, intentStyle);
+    const intentPanel = panelRect(intentWidth, centerX, intentY - intentPadTop, intentY + intentSize + intentPadBottom, intentSize);
+    markup.push(intentPanel, buildCenteredVectorTextMarkup(intentText, centerX, intentY, intentSize, intentStyle));
+  }
+
+  return markup.join("");
 }

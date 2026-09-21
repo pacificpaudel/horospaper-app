@@ -3,6 +3,7 @@ import { StructuredAstrologyData } from "@/lib/astrology";
 import { buildPlanetDiagramsMarkup } from "./planetDiagram";
 import { buildLuckMeterMarkup } from "./luckMeterOverlay";
 import { buildDateHeaderMarkup } from "./dateHeaderOverlay";
+import { deriveDailyIntent } from "./dailyIntent";
 import { dateOnlyString } from "@/lib/astrology/dailyData";
 
 const WIDTH = 1080;
@@ -126,7 +127,12 @@ export function generateMockHoroscopeImageSvg(opts: {
   const targetHeight = opts.target?.height ?? HEIGHT;
   const planetDiagrams = astrology ? buildPlanetDiagramsMarkup(astrology, targetWidth, targetHeight, opts.flushPlanets) : "";
   const luckMeter = buildLuckMeterMarkup(targetWidth, targetHeight, opts.luckScore);
-  const dateHeader = buildDateHeaderMarkup(targetWidth, targetHeight, astrology?.generationDate ?? dateOnlyString(new Date()));
+  const dateHeader = buildDateHeaderMarkup(
+    targetWidth,
+    targetHeight,
+    astrology?.generationDate ?? dateOnlyString(new Date()),
+    astrology ? deriveDailyIntent(astrology) : undefined
+  );
 
   const artwork = `<defs>
     <linearGradient id="paper" x1="0" y1="0" x2="1" y2="1">
