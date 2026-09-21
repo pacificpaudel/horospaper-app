@@ -6,7 +6,7 @@ import { useIsMobileViewport } from "@/lib/client/useIsMobileViewport";
 import Image from "next/image";
 import { NavBar } from "@/components/NavBar";
 import { FrameMode } from "@/components/FrameMode";
-import { BirthProfileForm } from "@/components/BirthProfileForm";
+import { BirthProfileForm, ViewMode } from "@/components/BirthProfileForm";
 import { CrystalBallScene } from "@/components/CrystalBallScene";
 import { ensureGuestId } from "@/lib/client/guest";
 import { apiFetch, ApiError } from "@/lib/client/api";
@@ -74,6 +74,7 @@ export default function HomePage() {
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [frameMode, setFrameMode] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>("DESKTOP");
   const isMobile = useIsMobileViewport();
 
   useEffect(() => {
@@ -125,6 +126,7 @@ export default function HomePage() {
         body: JSON.stringify({ refresh: true, desktopRatio: isMobile ? undefined : desktopViewportRatio() }),
       });
       setHoroscope(generated);
+      setFrameMode(viewMode === "FRAME");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not create today's paper.");
     } finally {
@@ -142,7 +144,7 @@ export default function HomePage() {
 
     return (
       <div className="output-page flex min-h-0 flex-1 flex-col">
-        <NavBar downloadUrl={imageUrl} onFrame={() => setFrameMode(true)} />
+        <NavBar downloadUrl={imageUrl} />
         <main className="output-canvas mx-auto w-full max-w-6xl px-5 md:px-8">
           <HoroscopeArtwork key={imageUrl} imageUrl={imageUrl} isMobile={isMobile} luckScore={luckScore} />
         </main>
@@ -162,7 +164,7 @@ export default function HomePage() {
           </div>
         ) : (
           <>
-            <BirthProfileForm initialProfile={profile} onSaved={handleSaved} />
+            <BirthProfileForm initialProfile={profile} onSaved={handleSaved} viewMode={viewMode} onViewModeChange={setViewMode} />
             <CrystalBallScene />
             {error && <p className="mt-3 text-center text-sm text-red-400">{error}</p>}
           </>

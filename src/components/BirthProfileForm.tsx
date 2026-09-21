@@ -4,6 +4,8 @@ import { useState } from "react";
 import { BirthProfileDTO } from "@/types/api";
 import { apiFetch, ApiError } from "@/lib/client/api";
 
+export type ViewMode = "DESKTOP" | "FRAME";
+
 export interface BirthProfileFormValues {
   name: string;
   birthDate: string;
@@ -47,10 +49,14 @@ export function BirthProfileForm({
   initialProfile,
   onSaved,
   submitLabel = "Generate Today's Horoscope",
+  viewMode,
+  onViewModeChange,
 }: {
   initialProfile?: BirthProfileDTO | null;
   onSaved: (profile: BirthProfileDTO) => void;
   submitLabel?: string;
+  viewMode: ViewMode;
+  onViewModeChange: (mode: ViewMode) => void;
 }) {
   const [values, setValues] = useState<BirthProfileFormValues>(defaultsFrom(initialProfile));
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -133,6 +139,13 @@ export function BirthProfileForm({
         />
       </Field>
 
+      <Field label="View as">
+        <select value={viewMode} onChange={(e) => onViewModeChange(e.target.value as ViewMode)} className="input">
+          <option value="DESKTOP">Desktop</option>
+          <option value="FRAME">Frame</option>
+        </select>
+      </Field>
+
       <button type="submit" disabled={submitting} className="primary-button birth-submit">
         {submitting ? "Making..." : submitLabel}
       </button>
@@ -142,7 +155,7 @@ export function BirthProfileForm({
       <style jsx>{`
         :global(.birth-strip) {
           display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
+          grid-template-columns: repeat(5, minmax(0, 1fr)) auto;
           align-items: end;
           gap: 0.65rem;
           width: 100%;
@@ -156,7 +169,7 @@ export function BirthProfileForm({
         :global(.birth-strip .input) { min-width: 0; width: 100%; }
         :global(.birth-submit) { white-space: nowrap; min-height: 2.65rem; }
         :global(.birth-error) { grid-column: 1 / -1; }
-        @media (max-width: 760px) {
+        @media (max-width: 900px) {
           :global(.birth-strip) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
           :global(.birth-submit) { grid-column: 1 / -1; }
         }

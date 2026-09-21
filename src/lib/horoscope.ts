@@ -55,8 +55,9 @@ export async function generateHoroscopeForUser(params: {
   forDate?: Date;
   isPreview?: boolean;
   desktopRatio?: number;
+  regenerateArt?: boolean;
 }): Promise<Horoscope> {
-  const { userId, profile, forDate = new Date(), isPreview = false, desktopRatio } = params;
+  const { userId, profile, forDate = new Date(), isPreview = false, desktopRatio, regenerateArt = false } = params;
   const day = dateOnlyString(forDate);
 
   let astrology: StructuredAstrologyData;
@@ -87,9 +88,15 @@ export async function generateHoroscopeForUser(params: {
   let imageUrlMobile: string | undefined;
   let imagePrompt: string | undefined;
   try {
+    // The astrology-derived key alone keeps the artwork stable across
+    // passive reloads within the same day (e.g. the midnight auto-refresh),
+    // but an explicit user-requested regeneration should actually produce
+    // different art -- mixing in this call's own horoscopeId gives it fresh
+    // entropy without touching the deterministic astrology data/luck score.
+    const imageSeed = regenerateArt ? `${buildDailyAstrologyKey(astrology)}:${horoscopeId}` : buildDailyAstrologyKey(astrology);
     const image = await generateHoroscopeImage({
       horoscopeId,
-      stableSeed: buildDailyAstrologyKey(astrology),
+      stableSeed: imageSeed,
       astrology,
       luckScore: calculateLuckScore(astrology),
       style: profile.imageStyle,

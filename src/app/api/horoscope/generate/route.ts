@@ -35,8 +35,7 @@ export async function POST(request: NextRequest) {
   if (preview) targetDate.setUTCDate(targetDate.getUTCDate() + 1);
 
   const existing = await getExistingHoroscope(user.id, targetDate, preview);
-  const hasCurrentDailyImage = existing?.imageUrl?.includes("-daily-image-v10.");
-  if (existing && (!refresh || hasCurrentDailyImage)) {
+  if (existing && !refresh) {
     return NextResponse.json({ horoscope: existing, cached: true });
   }
 
@@ -53,7 +52,14 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const horoscope = await generateHoroscopeForUser({ userId: user.id, profile, forDate: targetDate, isPreview: preview, desktopRatio });
+    const horoscope = await generateHoroscopeForUser({
+      userId: user.id,
+      profile,
+      forDate: targetDate,
+      isPreview: preview,
+      desktopRatio,
+      regenerateArt: refresh,
+    });
     return NextResponse.json({ horoscope, cached: false });
   } catch (err) {
     if (err instanceof HoroscopeGenerationError) {
