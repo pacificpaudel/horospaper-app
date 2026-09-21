@@ -27,6 +27,7 @@ export interface Horoscope {
   horoscopeText: HoroscopeSections;
   imageUrl: string | null;
   imageUrlMobile: string | null;
+  imageUrlFrame: string | null;
   imageStyle: ImageStyle;
   imagePrompt: string | null;
   isPreview: boolean;

@@ -18,6 +18,14 @@ const IMAGE_GENERATOR_VERSION = "daily-image-v10";
 // image that actually gets shown, with no further cropping happening after
 // the fact (in CSS or in an OS's "set as wallpaper" crop).
 const MOBILE_TARGET: TargetCanvas = { width: 1080, height: 1920 };
+// Frame mode targets an always-on device mounted like a vertical tablet
+// (a 16:9 panel turned portrait, i.e. 9:16) -- same shape as MOBILE_TARGET,
+// but rendered as its own asset with the planet diagrams flush to all 4
+// edges (see planetDiagram.ts's `flush` option), since this variant is only
+// ever shown inside the app's own object-fit: contain fullscreen display,
+// never downloaded to risk being cover-cropped by a native OS wallpaper
+// setter the way the mobile-download variant can be.
+const FRAME_TARGET: TargetCanvas = { width: 1080, height: 1920 };
 const DESKTOP_HEIGHT = 1080;
 const DESKTOP_FALLBACK_RATIO = 16 / 9;
 const DESKTOP_MIN_RATIO = 1.1;
@@ -39,6 +47,7 @@ function desktopTargetFor(ratio?: number): TargetCanvas {
 export interface GeneratedImage {
   url: string;
   mobileUrl: string;
+  frameUrl: string;
   prompt: string;
   provider: "openai" | "openverse" | "mock";
 }
@@ -70,15 +79,17 @@ export async function generateHoroscopeImage(params: {
     try {
       const { generateWithOpenAIImage } = await import("./openaiImage");
       const buffer = await generateWithOpenAIImage(prompt);
-      const [desktop, mobile] = await Promise.all([
+      const [desktop, mobile, frame] = await Promise.all([
         withWallpaperOverlay(buffer, astrology, luckScore, DESKTOP_TARGET),
         withWallpaperOverlay(buffer, astrology, luckScore, MOBILE_TARGET),
+        withWallpaperOverlay(buffer, astrology, luckScore, FRAME_TARGET, true),
       ]);
-      const [{ url }, { url: mobileUrl }] = await Promise.all([
+      const [{ url }, { url: mobileUrl }, { url: frameUrl }] = await Promise.all([
         saveGeneratedFile(`${assetId}-${IMAGE_GENERATOR_VERSION}.png`, desktop, "image/png"),
         saveGeneratedFile(`${assetId}-${IMAGE_GENERATOR_VERSION}-mobile.png`, mobile, "image/png"),
+        saveGeneratedFile(`${assetId}-${IMAGE_GENERATOR_VERSION}-frame.png`, frame, "image/png"),
       ]);
-      return { url, mobileUrl, prompt, provider };
+      return { url, mobileUrl, frameUrl, prompt, provider };
     } catch (err) {
       console.error("[image] openai generation failed, falling back to mock:", err);
     }
@@ -86,15 +97,17 @@ export async function generateHoroscopeImage(params: {
 
   try {
     const result = await generateOpenverseImage({ stableSeed, intent: deriveDailyIntent(astrology), randomize: randomizeArt });
-    const [desktop, mobile] = await Promise.all([
+    const [desktop, mobile, frame] = await Promise.all([
       withWallpaperOverlay(result.buffer, astrology, luckScore, DESKTOP_TARGET),
       withWallpaperOverlay(result.buffer, astrology, luckScore, MOBILE_TARGET),
+      withWallpaperOverlay(result.buffer, astrology, luckScore, FRAME_TARGET, true),
     ]);
-    const [{ url }, { url: mobileUrl }] = await Promise.all([
+    const [{ url }, { url: mobileUrl }, { url: frameUrl }] = await Promise.all([
       saveGeneratedFile(`${assetId}-${IMAGE_GENERATOR_VERSION}.${result.extension}`, desktop, result.contentType),
       saveGeneratedFile(`${assetId}-${IMAGE_GENERATOR_VERSION}-mobile.${result.extension}`, mobile, result.contentType),
+      saveGeneratedFile(`${assetId}-${IMAGE_GENERATOR_VERSION}-frame.${result.extension}`, frame, result.contentType),
     ]);
-    return { url, mobileUrl, prompt: result.prompt, provider: "openverse" };
+    return { url, mobileUrl, frameUrl, prompt: result.prompt, provider: "openverse" };
   } catch (err) {
     console.error("[image] Openverse generation failed, falling back to local art:", err);
   }
@@ -110,9 +123,11 @@ export async function generateHoroscopeImage(params: {
   };
   const svg = generateMockHoroscopeImageSvg({ ...svgOpts, target: DESKTOP_TARGET });
   const mobileSvg = generateMockHoroscopeImageSvg({ ...svgOpts, target: MOBILE_TARGET });
-  const [{ url }, { url: mobileUrl }] = await Promise.all([
+  const frameSvg = generateMockHoroscopeImageSvg({ ...svgOpts, target: FRAME_TARGET, flushPlanets: true });
+  const [{ url }, { url: mobileUrl }, { url: frameUrl }] = await Promise.all([
     saveGeneratedFile(`${assetId}-${IMAGE_GENERATOR_VERSION}.svg`, svg, "image/svg+xml"),
     saveGeneratedFile(`${assetId}-${IMAGE_GENERATOR_VERSION}-mobile.svg`, mobileSvg, "image/svg+xml"),
+    saveGeneratedFile(`${assetId}-${IMAGE_GENERATOR_VERSION}-frame.svg`, frameSvg, "image/svg+xml"),
   ]);
-  return { url, mobileUrl, prompt, provider: "mock" };
+  return { url, mobileUrl, frameUrl, prompt, provider: "mock" };
 }

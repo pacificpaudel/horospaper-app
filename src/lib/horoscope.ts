@@ -86,6 +86,7 @@ export async function generateHoroscopeForUser(params: {
   const horoscopeId = randomUUID();
   let imageUrl: string | undefined;
   let imageUrlMobile: string | undefined;
+  let imageUrlFrame: string | undefined;
   let imagePrompt: string | undefined;
   try {
     // The astrology-derived key alone keeps the artwork stable across
@@ -107,6 +108,7 @@ export async function generateHoroscopeForUser(params: {
     });
     imageUrl = image.url;
     imageUrlMobile = image.mobileUrl;
+    imageUrlFrame = image.frameUrl;
     imagePrompt = image.prompt;
   } catch (err) {
     logGenerationError(userId, "image", err);
@@ -121,6 +123,7 @@ export async function generateHoroscopeForUser(params: {
     horoscopeText: sections,
     imageUrl: imageUrl ?? null,
     imageUrlMobile: imageUrlMobile ?? null,
+    imageUrlFrame: imageUrlFrame ?? null,
     imagePrompt: imagePrompt ?? null,
     imageStyle: profile.imageStyle,
     isPreview,

@@ -69,6 +69,7 @@ export interface HoroscopeDTO {
   horoscopeText: HoroscopeSectionsDTO;
   imageUrl: string | null;
   imageUrlMobile: string | null;
+  imageUrlFrame: string | null;
   imageStyle: ImageStyle;
   isPreview: boolean;
   createdAt: string;

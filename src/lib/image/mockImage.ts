@@ -55,6 +55,7 @@ export function generateMockHoroscopeImageSvg(opts: {
   emotionalTheme?: string;
   moonIllumination?: number;
   target?: { width: number; height: number };
+  flushPlanets?: boolean;
 }): string {
   const rand = mulberry32(hashSeed(opts.seed));
   const [, bg2, accent] = PALETTES[opts.style];
@@ -123,7 +124,7 @@ export function generateMockHoroscopeImageSvg(opts: {
   const terminatorX = moonR - moon * 2 * moonR;
   const targetWidth = opts.target?.width ?? WIDTH;
   const targetHeight = opts.target?.height ?? HEIGHT;
-  const planetDiagrams = astrology ? buildPlanetDiagramsMarkup(astrology, targetWidth, targetHeight) : "";
+  const planetDiagrams = astrology ? buildPlanetDiagramsMarkup(astrology, targetWidth, targetHeight, opts.flushPlanets) : "";
   const luckMeter = buildLuckMeterMarkup(targetWidth, targetHeight, opts.luckScore);
   const dateHeader = buildDateHeaderMarkup(targetWidth, targetHeight, astrology?.generationDate ?? dateOnlyString(new Date()));
 

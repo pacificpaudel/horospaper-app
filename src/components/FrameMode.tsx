@@ -100,6 +100,7 @@ export function FrameMode({
         className="frame-mode-image"
       />
       <video ref={videoRef} src={KEEP_AWAKE_VIDEO_SRC} muted loop autoPlay playsInline aria-hidden="true" className="frame-mode-keepawake" />
+      <span className="frame-mode-version" aria-hidden="true">Version 2.0</span>
     </div>
   );
 }

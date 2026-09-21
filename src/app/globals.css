@@ -100,6 +100,18 @@ body {
 .frame-mode { position: fixed; inset: 0; z-index: 100; background: #000; cursor: pointer; }
 .frame-mode-image { object-fit: contain; }
 .frame-mode-keepawake { position: absolute; width: 1px; height: 1px; opacity: 0.01; pointer-events: none; }
+.frame-mode-version {
+  position: absolute;
+  bottom: 1.25rem;
+  left: 50%;
+  transform: translateX(-50%);
+  font-style: italic;
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  color: rgba(248, 240, 223, 0.55);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+}
 
 * {
   border-color: var(--border);

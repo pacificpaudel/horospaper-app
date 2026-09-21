@@ -144,7 +144,14 @@ export default function HomePage() {
     const imageUrl = (isMobile && horoscope.imageUrlMobile) || horoscope.imageUrl;
 
     if (frameMode) {
-      return <FrameMode imageUrl={imageUrl} luckScore={luckScore} onExit={() => setFrameMode(false)} />;
+      // Frame mode is meant for a dedicated always-on device mounted like a
+      // vertical tablet, not whatever the browser's own viewport happens to
+      // be -- so it always uses the dedicated frame-shaped canvas (4 planet
+      // diagrams flush to its edges) rather than the viewport-dependent
+      // `imageUrl` above. Falls back for horoscopes generated before this
+      // variant existed.
+      const frameImageUrl = horoscope.imageUrlFrame ?? horoscope.imageUrlMobile ?? horoscope.imageUrl;
+      return <FrameMode imageUrl={frameImageUrl} luckScore={luckScore} onExit={() => setFrameMode(false)} />;
     }
 
     return (

@@ -155,15 +155,19 @@ function diagramGroup(spec: DiagramSpec, x: number, y: number, size: number, ast
  * need for a safety inset there. This doesn't collide with the date header
  * or luck meter: both are horizontally centered (dateHeaderOverlay.ts,
  * luckMeterOverlay.ts) while the diagrams sit out at the far corners. The
- * portrait (mobile) canvas keeps its inset on all sides: it's still
- * cover-cropped by some native OS "set as wallpaper" flows outside this
- * app's own display, where a phone's true screen ratio commonly doesn't
- * match this fixed canvas.
+ * portrait (mobile-download) canvas keeps its inset on all sides by
+ * default: it's still cover-cropped by some native OS "set as wallpaper"
+ * flows outside this app's own display, where a phone's true screen ratio
+ * commonly doesn't match this fixed canvas. `flush` opts a portrait canvas
+ * into the same 4-edge placement as desktop -- used for the dedicated
+ * frame-mode canvas, which (like desktop) is only ever shown uncropped
+ * inside this app's own object-fit: contain display, never downloaded to
+ * be cover-cropped elsewhere.
  */
-export function buildPlanetDiagramsMarkup(astrology: StructuredAstrologyData, width: number, height: number): string {
+export function buildPlanetDiagramsMarkup(astrology: StructuredAstrologyData, width: number, height: number, flush = false): string {
   const size = Math.max(100, Math.min(190, Math.round(Math.min(width, height) * 0.17)));
   const isPortrait = height > width;
-  const margin = isPortrait ? Math.round(Math.min(width, height) * 0.12) : 0;
+  const margin = isPortrait && !flush ? Math.round(Math.min(width, height) * 0.12) : 0;
 
   return DIAGRAMS.map((spec, i) => {
     const x = spec.corner.endsWith("left") ? margin : width - margin - size;
