@@ -53,8 +53,8 @@ export function buildDateHeaderMarkup(width: number, height: number, generationD
   const centerX = width / 2;
   const safeWidth = width * 0.82;
 
-  const weekdayStyle: TextStyle = { color: "#ffffff", opacity: 0.62, strokeWidth: 0.09, tracking: 0.34 };
-  const dateStyle: TextStyle = { color: "#f7c56a", opacity: 0.72, strokeWidth: 0.1, tracking: 0.28 };
+  const weekdayStyle: TextStyle = { color: "#39e991", opacity: 0.82, strokeWidth: 0.09, tracking: 0.34 };
+  const dateStyle: TextStyle = { color: "#4fb8f7", opacity: 0.85, strokeWidth: 0.1, tracking: 0.28 };
 
   const weekdaySize = fitSize(weekday, minDim * 0.05, safeWidth, weekdayStyle);
   const dateSize = fitSize(dateLine, minDim * 0.022, safeWidth, dateStyle);

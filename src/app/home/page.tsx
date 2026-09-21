@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { fromZonedTime, toZonedTime } from "date-fns-tz";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { toZonedTime } from "date-fns-tz";
 import { useIsMobileViewport } from "@/lib/client/useIsMobileViewport";
 import Image from "next/image";
 import { NavBar } from "@/components/NavBar";
@@ -34,19 +34,22 @@ function desktopViewportRatio(): number | undefined {
 // regenerate the instant that date rolls over -- not on a rolling "24h
 // since this tab last checked" schedule, which could sit on yesterday's
 // wallpaper for up to 24h after midnight if the tab happened to load a
-// couple hours into the previous day. A little buffer past midnight avoids
-// a request landing a few seconds early due to clock skew.
-const MIDNIGHT_BUFFER_MS = 60_000;
+// couple hours into the previous day.
+//
+// This polls rather than scheduling one long setTimeout for the exact next
+// midnight: frame mode is meant to be left running unattended on a spare
+// tablet/monitor for days at a stretch, and a single very-long JS timer can
+// silently drift or get throttled by the OS/browser (background tab power
+// saving, device sleep) over that span. A short, frequent poll is
+// self-healing instead -- however long the device was actually asleep,
+// the very next tick notices the local calendar date has moved on and
+// fires immediately, deleting the stale wallpaper's place in state and
+// requesting a brand new one for the new day.
+const DAY_CHANGE_POLL_MS = 60_000;
 
-function msUntilNextDayBoundary(timezone: string): number {
-  const now = new Date();
-  const zoned = toZonedTime(now, timezone);
-  // Date.UTC normalizes month/year rollover for us; only used to get the
-  // next day's y/m/d, not as a real instant.
-  const next = new Date(Date.UTC(zoned.getFullYear(), zoned.getMonth(), zoned.getDate() + 1));
-  const nextMidnightWallClock = `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}-${String(next.getUTCDate()).padStart(2, "0")}T00:00:00`;
-  const nextMidnightUtc = fromZonedTime(nextMidnightWallClock, timezone);
-  return nextMidnightUtc.getTime() - now.getTime() + MIDNIGHT_BUFFER_MS;
+function localDateString(timezone: string): string {
+  const zoned = toZonedTime(new Date(), timezone);
+  return `${zoned.getFullYear()}-${String(zoned.getMonth() + 1).padStart(2, "0")}-${String(zoned.getDate()).padStart(2, "0")}`;
 }
 
 // The luck-meter bar is baked into the image itself (see luckMeterOverlay.ts)
@@ -84,12 +87,12 @@ export default function HomePage() {
       .catch(() => setProfile(null));
   }, []);
 
-  // Checks in at the next day boundary (in the profile's own timezone) so a
-  // new day's horoscope picks up on its own, whether the app's been sitting
-  // open for 2 hours or 20; the endpoint is idempotent for the current day,
-  // so this is a no-op until the date actually rolls over. Reschedules
-  // itself off a freshly computed delay each time rather than a flat 24h
-  // interval, so it can't drift away from the actual boundary.
+  // Checks in when the day-change poll below notices the local calendar
+  // date has rolled over, so a new day's horoscope (and wallpaper) picks up
+  // on its own -- including on a frame-mode kiosk left running unattended.
+  // Replaces `horoscope` with the freshly generated one only once the new
+  // day's fetch resolves, so the stale wallpaper is what's shown right up
+  // until the new one is ready, rather than a jarring blank flash.
   const refreshHoroscope = useCallback(async () => {
     try {
       const { horoscope: latest } = await apiFetch<{ horoscope: HoroscopeDTO }>("/api/horoscope/generate", {
@@ -102,18 +105,20 @@ export default function HomePage() {
     }
   }, [isMobile]);
 
+  const lastSeenDayRef = useRef<string | null>(null);
+
   useEffect(() => {
     const timezone = profile?.timezone;
     if (!timezone) return;
-    let timeoutId: ReturnType<typeof setTimeout>;
-    const scheduleNext = () => {
-      timeoutId = setTimeout(() => {
+    lastSeenDayRef.current = localDateString(timezone);
+    const intervalId = setInterval(() => {
+      const today = localDateString(timezone);
+      if (today !== lastSeenDayRef.current) {
+        lastSeenDayRef.current = today;
         refreshHoroscope();
-        scheduleNext();
-      }, msUntilNextDayBoundary(timezone));
-    };
-    scheduleNext();
-    return () => clearTimeout(timeoutId);
+      }
+    }, DAY_CHANGE_POLL_MS);
+    return () => clearInterval(intervalId);
   }, [refreshHoroscope, profile?.timezone]);
 
   async function handleSaved(savedProfile: BirthProfileDTO) {
@@ -144,7 +149,7 @@ export default function HomePage() {
 
     return (
       <div className="output-page flex min-h-0 flex-1 flex-col">
-        <NavBar downloadUrl={imageUrl} />
+        <NavBar downloadUrl={imageUrl} onLogoClick={() => setHoroscope(null)} />
         <main className="output-canvas mx-auto w-full max-w-6xl px-5 md:px-8">
           <HoroscopeArtwork key={imageUrl} imageUrl={imageUrl} isMobile={isMobile} luckScore={luckScore} />
         </main>

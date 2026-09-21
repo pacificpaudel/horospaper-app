@@ -103,6 +103,7 @@ export async function generateHoroscopeForUser(params: {
       luckyTheme: sections.luckyTheme,
       emotionalTheme: sections.overall,
       desktopRatio,
+      randomizeArt: regenerateArt,
     });
     imageUrl = image.url;
     imageUrlMobile = image.mobileUrl;

@@ -4,11 +4,11 @@ import { useState } from "react";
 import Link from "next/link";
 import { Logo } from "./Logo";
 
-export function NavBar({ downloadUrl }: { downloadUrl?: string | null }) {
+export function NavBar({ downloadUrl, onLogoClick }: { downloadUrl?: string | null; onLogoClick?: () => void }) {
   return (
     <header className="sticky top-0 z-40 border-b border-border/70 bg-background/80 backdrop-blur-xl">
       <nav className="mx-auto flex min-h-20 max-w-6xl items-center justify-between px-5 py-3 md:px-8">
-        <Link href="/home">
+        <Link href="/home" onClick={onLogoClick}>
           <Logo />
         </Link>
         {downloadUrl ? (

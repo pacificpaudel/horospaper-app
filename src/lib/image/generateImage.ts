@@ -58,8 +58,9 @@ export async function generateHoroscopeImage(params: {
   luckyTheme: string;
   emotionalTheme: string;
   desktopRatio?: number;
+  randomizeArt?: boolean;
 }): Promise<GeneratedImage> {
-  const { stableSeed, astrology, luckScore, style, luckyTheme, emotionalTheme, desktopRatio } = params;
+  const { stableSeed, astrology, luckScore, style, luckyTheme, emotionalTheme, desktopRatio, randomizeArt } = params;
   const DESKTOP_TARGET = desktopTargetFor(desktopRatio);
   const assetId = createHash("sha256").update(stableSeed).digest("hex").slice(0, 24);
   const prompt = buildImagePrompt(astrology, { style, luckyTheme, emotionalTheme });
@@ -84,7 +85,7 @@ export async function generateHoroscopeImage(params: {
   }
 
   try {
-    const result = await generateOpenverseImage({ stableSeed, intent: deriveDailyIntent(astrology) });
+    const result = await generateOpenverseImage({ stableSeed, intent: deriveDailyIntent(astrology), randomize: randomizeArt });
     const [desktop, mobile] = await Promise.all([
       withWallpaperOverlay(result.buffer, astrology, luckScore, DESKTOP_TARGET),
       withWallpaperOverlay(result.buffer, astrology, luckScore, MOBILE_TARGET),
