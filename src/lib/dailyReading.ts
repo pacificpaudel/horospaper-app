@@ -9,6 +9,8 @@ import { adToBs } from "@/lib/nepaliDate";
 import { resolveProvider } from "@/lib/llm/generateHoroscope";
 import { DailyIntent, isThemeTag, MoodTag, THEME_TAGS, ThemeTag } from "@/lib/image/dailyIntent";
 import type { KundliData } from "@/lib/astrologyApi";
+import { fetchPanchang, panchangCacheKey, PanchangData } from "@/lib/panchang";
+import { getPanchangInsight, PanchangInsight } from "@/lib/panchangInsight";
 
 /**
  * Everything the wallpaper needs about "today" for one person: the luck
@@ -23,6 +25,8 @@ export interface DailyReading {
   planetary: GocharReading;
   /** The birth chart drawn above the luck meter (attached in horoscope.ts). */
   kundli?: KundliData | null;
+  /** Today's Panchang (freeastroapi.com) and its LLM interpretation, when available. */
+  panchang: { data: PanchangData; insight: PanchangInsight | null } | null;
   rashifal: {
     bsDate: string;
     source: "hamropatro";
@@ -178,10 +182,10 @@ async function summarizeRashifal(text: string, bsDate: string, slug: string, ras
 
 // --- Combination -------------------------------------------------------------
 
-export function moodFor(luck: number, rashifalSentiment: number | null, planetary: GocharReading): MoodTag {
+export function moodFor(luck: number, externalSentiment: number | null, planetary: GocharReading): MoodTag {
   if (planetary.chandrashtama && luck < 45) return "restless";
   if (luck >= 84) return "radiant";
-  if (luck >= 72) return (rashifalSentiment ?? 0) >= 0.3 ? "joyful" : "hopeful";
+  if (luck >= 72) return (externalSentiment ?? 0) >= 0.3 ? "joyful" : "hopeful";
   if (luck >= 60) return planetary.tara.score > 0 ? "serene" : "hopeful";
   if (luck >= 50) return "steady";
   if (luck >= 40) return "determined";
@@ -189,9 +193,16 @@ export function moodFor(luck: number, rashifalSentiment: number | null, planetar
   return "reflective";
 }
 
-/** Planets 60% (computed for this person's own chart), shared per-rashi rashifal 40%. */
-export function combineLuck(planetaryScore: number, rashifalSentiment: number | null): number {
-  const combined = rashifalSentiment === null ? planetaryScore : planetaryScore * 0.6 + rashifalSentiment * 0.4;
+/**
+ * Planets always carry 60% (computed for this person's own chart). The
+ * remaining 40% is split evenly between whichever of the shared per-rashi
+ * Hamro Patro rashifal and today's Panchang (freeastroapi.com) are
+ * available -- e.g. 60/40 with just one, 60/20/20 with both, 100% planets
+ * with neither.
+ */
+export function combineLuck(planetaryScore: number, rashifalSentiment: number | null, panchangSentiment: number | null = null): number {
+  const secondary = [rashifalSentiment, panchangSentiment].filter((s): s is number => s !== null);
+  const combined = secondary.length === 0 ? planetaryScore : planetaryScore * 0.6 + (secondary.reduce((sum, s) => sum + s, 0) / secondary.length) * 0.4;
   return Math.max(5, Math.min(97, Math.round(50 + combined * 45)));
 }
 
@@ -199,9 +210,11 @@ export function combineLuck(planetaryScore: number, rashifalSentiment: number | 
  * Builds the day's reading for a natal chart. `forDate` is the user's own
  * local calendar day (anchored to noon UTC, see todayForTimezone), used
  * both for the transit positions and to pick the matching BS-dated
- * rashifal.
+ * rashifal. `timezone` (the profile's birth timezone, paired with the
+ * birth coordinates already in `astrology`) is used to fetch today's
+ * Panchang for that same place.
  */
-export async function buildDailyReading(astrology: StructuredAstrologyData, forDate: Date): Promise<DailyReading> {
+export async function buildDailyReading(astrology: StructuredAstrologyData, forDate: Date, timezone: string): Promise<DailyReading> {
   // The natal chart is sidereal (Lahiri) for the Vedic system, which is the
   // only one the app offers -- exactly what the rashi and gochar need.
   const natalMoon = astrology.natalChart.planets.moon.longitude;
@@ -215,16 +228,32 @@ export async function buildDailyReading(astrology: StructuredAstrologyData, forD
     ? await summarizeRashifal(rashifalText.text, rashifalText.bsDate, rashi.slug, rashi.name, houseTheme)
     : null;
 
-  const luckScore = combineLuck(planetary.score, summary?.sentiment ?? null);
+  // Panchang pipeline: fetch the exact values from freeastroapi.com (the
+  // one source), then have an LLM interpret those exact values -- never
+  // calculate or guess them itself. Shared per (date, location), not
+  // per-person, so this stays cheap even at scale.
+  const panchangInput = {
+    date: dateOnlyString(forDate),
+    latitude: astrology.natalChart.latitude,
+    longitude: astrology.natalChart.longitude,
+    timezone,
+  };
+  const panchangData = await fetchPanchang(panchangInput);
+  const panchangInsight = panchangData ? await getPanchangInsight(panchangData, panchangCacheKey(panchangInput)) : null;
+
+  const luckScore = combineLuck(planetary.score, summary?.sentiment ?? null, panchangInsight?.sentiment ?? null);
+  const secondarySentiments = [summary?.sentiment, panchangInsight?.sentiment].filter((s): s is number => s !== undefined && s !== null);
+  const externalSentiment = secondarySentiments.length ? secondarySentiments.reduce((sum, s) => sum + s, 0) / secondarySentiments.length : null;
 
   return {
     rashi: { name: rashi.name, nepali: rashi.nepali, sign: rashi.sign },
     luckScore,
     intent: {
-      mood: moodFor(luckScore, summary?.sentiment ?? null, planetary),
-      theme: summary?.theme ?? houseTheme,
+      mood: moodFor(luckScore, externalSentiment, planetary),
+      theme: summary?.theme ?? panchangInsight?.theme ?? houseTheme,
     },
     planetary,
+    panchang: panchangData ? { data: panchangData, insight: panchangInsight } : null,
     rashifal:
       rashifalText && summary
         ? { bsDate: rashifalText.bsDate, source: rashifalText.source, ...summary }

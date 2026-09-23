@@ -93,7 +93,7 @@ export async function generateHoroscopeForUser(params: {
   // text, and the day's luck + 2 tags (planetary gochar + Nepali rashifal).
   const [textResult, reading] = await Promise.allSettled([
     generateHoroscope(astrology, { name: profile.name, language: profile.language }),
-    buildDailyReading(astrology, forDate),
+    buildDailyReading(astrology, forDate, profile.timezone),
   ]);
   if (textResult.status === "rejected") {
     logGenerationError(userId, "llm", textResult.reason);
