@@ -398,8 +398,6 @@ export function BirthProfileForm({
         :global(.birth-chart-kundli) { display: flex; align-items: flex-start; gap: 0.5rem; width: 100%; justify-content: center; }
         :global(.birth-chart-kundli img) { width: min(100%, 12rem); aspect-ratio: 1; display: block; border-radius: 0.4rem; }
         :global(.birth-chart-sign-badge) { font-size: 1.6rem; }
-        :global(.birth-chart-dasha) { grid-column: 1 / -1; font-size: 0.82rem; color: #fdf6e6; }
-        :global(.birth-chart-dasha strong) { color: #f7c56a; }
         :global(.birth-chart-planet) { width: 4rem; height: 4rem; }
         :global(.birth-chart-sign) { font-size: 2.6rem; line-height: 1; color: #f7c56a; }
         :global(.birth-chart-note) { grid-column: 1 / -1; font-size: 0.72rem; color: #b8b2a4; }
@@ -597,11 +595,6 @@ function BirthChartPanel({ chart }: { chart: BirthChartView }) {
           <div className="birth-chart-visual">{row.visual}</div>
         </div>
       ))}
-      {chart.mahadasha && (
-        <p className="birth-chart-dasha">
-          Current Mahadasha: <strong>{chart.mahadasha.lord}</strong> ({chart.mahadasha.start.slice(0, 4)}–{chart.mahadasha.end.slice(0, 4)})
-        </p>
-      )}
       {chart.timeMissing ? (
         <p className="birth-chart-warning" role="status">
           {possibleRashis.length > 1
