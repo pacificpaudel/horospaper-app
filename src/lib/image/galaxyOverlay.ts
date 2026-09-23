@@ -29,9 +29,11 @@ const BAR_HALF_KPC = 4.5;
 const BAR_ANGLE_DEG = 27;
 const PITCH_DEG = 12.5;
 const NORMA_AT_SUN_KPC = 3.58;
-// SVG angles: 0° = right, 90° = down (y grows downward). The Sun is drawn
-// straight below the Center, as in the standard NASA/JPL top-down map.
-const SUN_ANGLE_DEG = 90;
+// SVG angles: 0° = right, 90° = down (y grows downward). A top-down map's
+// rotation is arbitrary; the Sun is placed level with the Center, on its
+// left, so on the full-width wallpaper it lands mid-height -- clear of the
+// date header at the top and the luck meter at the bottom.
+const SUN_ANGLE_DEG = 180;
 const BAR_NEAR_END_DEG = SUN_ANGLE_DEG + BAR_ANGLE_DEG;
 const QUADRANT_LABELS = ["I", "II", "III", "IV"];
 
@@ -52,12 +54,11 @@ function polar(cx: number, cy: number, r: number, angleDeg: number): [number, nu
   return [cx + r * Math.cos(rad(angleDeg)), cy + r * Math.sin(rad(angleDeg))];
 }
 
-function spiralArmMarkup(cx: number, cy: number, scale: number, armIndex: number, rand: () => number, dotScale: number): string {
+function spiralArmMarkup(cx: number, cy: number, scale: number, armIndex: number, rand: () => number, dotScale: number, steps: number): string {
   const k = Math.tan(rad(PITCH_DEG));
   const baseKpc = NORMA_AT_SUN_KPC * Math.exp((k * armIndex * Math.PI) / 2);
   const phiStart = Math.log(3.2 / baseKpc) / k;
   const phiEnd = Math.log(DISC_KPC / baseKpc) / k;
-  const steps = 70;
 
   const points: [number, number, number][] = [];
   for (let i = 0; i <= steps; i++) {
@@ -70,7 +71,7 @@ function spiralArmMarkup(cx: number, cy: number, scale: number, armIndex: number
   }
 
   const d = points.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`).join(" ");
-  const glow = `<path d="${d}" fill="none" stroke="#a9c1ff" stroke-opacity="0.16" stroke-width="${(1.5 * scale).toFixed(1)}" stroke-linecap="round" />`;
+  const glow = `<path d="${d}" fill="none" stroke="#e4ecff" stroke-opacity="0.18" stroke-width="${(0.8 * scale).toFixed(1)}" stroke-linecap="round" />`;
 
   const stars = points
     .flatMap(([x, y, rKpc]) =>
@@ -80,7 +81,7 @@ function spiralArmMarkup(cx: number, cy: number, scale: number, armIndex: number
         const [sx, sy] = polar(x, y, jitter, jitterAngle);
         const fade = 1 - (rKpc / DISC_KPC) * 0.55;
         const color = rand() < 0.12 ? "#ffb3c7" : rand() < 0.5 ? "#dfe8ff" : "#ffffff";
-        return `<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="${((0.5 + rand() * 0.9) * dotScale).toFixed(2)}" fill="${color}" opacity="${(0.35 + rand() * 0.5 * fade).toFixed(2)}" />`;
+        return `<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="${((0.5 + rand() * 0.9) * dotScale).toFixed(2)}" fill="${color}" opacity="${(0.5 + rand() * 0.45 * fade).toFixed(2)}" />`;
       }),
     )
     .join("");
@@ -114,27 +115,25 @@ function miniSolarSystemMarkup(x: number, y: number, size: number, date: Date): 
 }
 
 /**
- * Returns the galaxy panel as SVG markup, centered on a `width`x`height`
- * canvas. Semi-transparent so the day's artwork still reads through it; the
- * center is clear of the corner planet diagrams, the top date header and
- * the bottom luck meter on every canvas shape.
+ * Returns the galaxy as SVG markup spanning the full width of a
+ * `width`x`height` canvas, centered on it, with no backdrop -- the day's
+ * artwork shows through the semi-transparent disc. On a landscape canvas
+ * the disc is taller than the canvas, so its top and bottom edges run off
+ * the image. Callers draw it first, under the other overlays.
  */
 export function buildGalaxyMarkup(width: number, height: number, generationDate: string): string {
-  const minDim = Math.min(width, height);
-  const size = Math.round(Math.max(150, Math.min(320, minDim * 0.3)));
-  const titleSize = size * 0.045;
-  const panelHeight = size + titleSize * 1.4;
-  const originX = Math.round((width - size) / 2);
-  const originY = Math.round((height - panelHeight) / 2);
-
-  const cx = size / 2;
-  const cy = size / 2 + titleSize * 0.9;
-  const discR = size * 0.41;
+  const cx = width / 2;
+  const cy = height / 2;
+  const discR = width / 2;
   const scale = discR / DISC_KPC;
-  const dotScale = size / 260;
+  // Labels and the Solar System inset stay a readable, fixed-ish size
+  // however large the disc gets.
+  const ui = Math.min(width, height) * 0.3;
+  const dotScale = Math.min(2.4, width / 520);
+  const steps = Math.round(Math.max(70, Math.min(260, width / 6)));
   const rand = mulberry32(8_200);
 
-  const arms = [0, 1, 2, 3].map((i) => spiralArmMarkup(cx, cy, scale, i, rand, dotScale)).join("");
+  const arms = [0, 1, 2, 3].map((i) => spiralArmMarkup(cx, cy, scale, i, rand, dotScale, steps)).join("");
 
   const [sunX, sunY] = polar(cx, cy, SUN_KPC * scale, SUN_ANGLE_DEG);
   const orionSpur = (() => {
@@ -145,12 +144,13 @@ export function buildGalaxyMarkup(width: number, height: number, generationDate:
     return `<path d="${pts.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`).join(" ")}" fill="none" stroke="#c7d6ff" stroke-opacity="0.22" stroke-width="${(0.9 * scale).toFixed(1)}" stroke-linecap="round" />`;
   })();
 
-  const axisStroke = Math.max(0.8, size * 0.004);
+  const axisStroke = Math.max(1, ui * 0.005);
+  const dash = (ui * 0.03).toFixed(1);
   const axes = [BAR_NEAR_END_DEG, BAR_NEAR_END_DEG + 90]
     .map((angle) => {
-      const [x1, y1] = polar(cx, cy, discR * 1.04, angle);
-      const [x2, y2] = polar(cx, cy, discR * 1.04, angle + 180);
-      return `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="#ffffff" stroke-opacity="0.32" stroke-width="${axisStroke.toFixed(2)}" stroke-dasharray="${(size * 0.015).toFixed(1)} ${(size * 0.015).toFixed(1)}" />`;
+      const [x1, y1] = polar(cx, cy, discR, angle);
+      const [x2, y2] = polar(cx, cy, discR, angle + 180);
+      return `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="#ffffff" stroke-opacity="0.3" stroke-width="${axisStroke.toFixed(2)}" stroke-dasharray="${dash} ${dash}" />`;
     })
     .join("");
 
@@ -160,34 +160,32 @@ export function buildGalaxyMarkup(width: number, height: number, generationDate:
   const wedgeFrom = BAR_NEAR_END_DEG + sunQuadrant * 90;
   const [wx1, wy1] = polar(cx, cy, discR, wedgeFrom);
   const [wx2, wy2] = polar(cx, cy, discR, wedgeFrom + 90);
-  const highlight = `<path d="M${cx.toFixed(1)} ${cy.toFixed(1)} L${wx1.toFixed(1)} ${wy1.toFixed(1)} A${discR.toFixed(1)} ${discR.toFixed(1)} 0 0 1 ${wx2.toFixed(1)} ${wy2.toFixed(1)} Z" fill="#f7c56a" fill-opacity="0.09" />`;
+  const highlight = `<path d="M${cx.toFixed(1)} ${cy.toFixed(1)} L${wx1.toFixed(1)} ${wy1.toFixed(1)} A${discR.toFixed(1)} ${discR.toFixed(1)} 0 0 1 ${wx2.toFixed(1)} ${wy2.toFixed(1)} Z" fill="#f7c56a" fill-opacity="0.07" />`;
 
-  const labelSize = size * 0.042;
+  // Quadrant numerals sit 60% of the way out, where they stay on-canvas
+  // even when the disc overflows a landscape image vertically.
+  const labelSize = ui * 0.06;
   const labels = QUADRANT_LABELS.map((label, q) => {
-    const [lx, ly] = polar(cx, cy, discR * 0.9, BAR_NEAR_END_DEG + q * 90 + 45);
+    const [lx, ly] = polar(cx, cy, discR * 0.6, BAR_NEAR_END_DEG + q * 90 + 45);
     const color = q === sunQuadrant ? "#f7c56a" : "#dfe8ff";
-    return buildCenteredVectorTextMarkup(label, lx, ly - labelSize / 2, labelSize, { color, opacity: 0.85, strokeWidth: 0.14, tracking: 0.2 });
+    return buildCenteredVectorTextMarkup(label, lx, ly - labelSize / 2, labelSize, { color, opacity: 0.8, strokeWidth: 0.12, tracking: 0.2 });
   }).join("");
 
-  const title = buildCenteredVectorTextMarkup("MILKY WAY", cx, size * 0.035, titleSize, { color: "#dfe8ff", opacity: 0.8, strokeWidth: 0.12, tracking: 0.3 });
-
   return `
-  <g transform="translate(${originX} ${originY})">
+  <g>
     <defs>
       <radialGradient id="mwDisc" cx="50%" cy="50%" r="50%">
-        <stop offset="0%" stop-color="#fff1cf" stop-opacity="0.32" />
-        <stop offset="35%" stop-color="#b9c8ff" stop-opacity="0.12" />
+        <stop offset="0%" stop-color="#fff1cf" stop-opacity="0.3" />
+        <stop offset="35%" stop-color="#b9c8ff" stop-opacity="0.1" />
         <stop offset="100%" stop-color="#6d7fd6" stop-opacity="0" />
       </radialGradient>
       <radialGradient id="mwCore" cx="50%" cy="50%" r="50%">
-        <stop offset="0%" stop-color="#fff6de" stop-opacity="0.95" />
-        <stop offset="45%" stop-color="#ffd98f" stop-opacity="0.55" />
+        <stop offset="0%" stop-color="#fff6de" stop-opacity="0.9" />
+        <stop offset="45%" stop-color="#ffd98f" stop-opacity="0.5" />
         <stop offset="100%" stop-color="#ffb35c" stop-opacity="0" />
       </radialGradient>
     </defs>
-    <rect width="${size}" height="${panelHeight.toFixed(1)}" rx="${(size * 0.11).toFixed(1)}" fill="#0b1220" fill-opacity="0.38" stroke="#ffffff" stroke-opacity="0.16" stroke-width="1.4" />
-    ${title}
-    <g opacity="0.88">
+    <g opacity="0.85">
       <circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${discR.toFixed(1)}" fill="url(#mwDisc)" />
       ${highlight}
       ${arms}
@@ -197,6 +195,6 @@ export function buildGalaxyMarkup(width: number, height: number, generationDate:
       ${axes}
       ${labels}
     </g>
-    ${miniSolarSystemMarkup(sunX, sunY, size, new Date(`${generationDate}T12:00:00Z`))}
+    ${miniSolarSystemMarkup(sunX, sunY, ui, new Date(`${generationDate}T12:00:00Z`))}
   </g>`;
 }

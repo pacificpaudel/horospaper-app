@@ -1,10 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { RefObject, useState } from "react";
 import Link from "next/link";
 import { Logo } from "./Logo";
+import { FullscreenButton } from "./FullscreenButton";
 
-export function NavBar({ downloadUrl, onLogoClick }: { downloadUrl?: string | null; onLogoClick?: () => void }) {
+export function NavBar({
+  downloadUrl,
+  onLogoClick,
+  fullscreenTarget,
+}: {
+  downloadUrl?: string | null;
+  onLogoClick?: () => void;
+  /** The wallpaper container to take fullscreen; the button only shows when given. */
+  fullscreenTarget?: RefObject<HTMLElement | null>;
+}) {
   return (
     <header className="sticky top-0 z-40 border-b border-border/70 bg-background/80 backdrop-blur-xl">
       <nav className="mx-auto flex min-h-20 max-w-6xl items-center justify-between px-5 py-3 md:px-8">
@@ -13,6 +23,7 @@ export function NavBar({ downloadUrl, onLogoClick }: { downloadUrl?: string | nu
         </Link>
         {downloadUrl ? (
           <div className="flex items-center gap-2">
+            {fullscreenTarget && <FullscreenButton target={fullscreenTarget} />}
             <DownloadButton href={downloadUrl} />
           </div>
         ) : (

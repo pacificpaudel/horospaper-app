@@ -100,9 +100,15 @@ body {
 .frame-mode { position: fixed; inset: 0; z-index: 100; background: #000; cursor: pointer; }
 .frame-mode-image { object-fit: contain; }
 .frame-mode-keepawake { position: absolute; width: 1px; height: 1px; opacity: 0.01; pointer-events: none; }
-.frame-mode-version {
+.frame-mode-fullscreen { position: absolute; top: 1rem; right: 1rem; z-index: 1; background: rgba(11, 18, 32, 0.55); opacity: 0.45; transition: opacity 150ms ease; }
+.frame-mode-fullscreen:hover, .frame-mode-fullscreen:focus-visible { opacity: 1; }
+.output-frame:fullscreen { border-radius: 0; background: #000; }
+/* Same "Version 2.0" tag under the luck meter on both the desktop output
+   and frame mode. */
+.wallpaper-version {
   position: absolute;
-  bottom: 1.25rem;
+  /* Just under the luck meter panel, which sits ~6.5% up from the bottom. */
+  bottom: 0.3rem;
   left: 50%;
   transform: translateX(-50%);
   font-style: italic;

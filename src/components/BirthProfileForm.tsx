@@ -6,6 +6,7 @@ import { BirthProfileDTO } from "@/types/api";
 import { apiFetch, ApiError } from "@/lib/client/api";
 import { adToBs, bsToAd } from "@/lib/nepaliDate";
 import type { BirthSnapshot } from "@/lib/astrology/birthSnapshot";
+import { DiagramPlanet, planetBodyMarkup } from "@/lib/image/planetBodies";
 
 export type ViewMode = "DESKTOP" | "FRAME";
 
@@ -267,6 +268,13 @@ export function BirthProfileForm({
           font-weight: 600;
           cursor: default;
         }
+        :global(.birth-chart-cell) { display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; }
+        :global(.birth-chart-visual) {
+          display: flex; align-items: center; justify-content: center;
+          height: 4.5rem; border-radius: 0.65rem; background: #080b16;
+        }
+        :global(.birth-chart-planet) { width: 4rem; height: 4rem; }
+        :global(.birth-chart-sign) { font-size: 2.6rem; line-height: 1; color: #f7c56a; }
         :global(.birth-chart-note) { grid-column: 1 / -1; font-size: 0.72rem; color: #b8b2a4; }
         @media (max-width: 1080px) {
           :global(.birth-strip) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -315,19 +323,38 @@ function useBirthSnapshot(birthDate: string, birthTime: string, timezone: string
   return valid ? snapshot : null;
 }
 
+/** The same stylized body the wallpaper's corner diagrams draw, as a standalone icon. */
+function PlanetImage({ planet, moonIllumination = 0.5 }: { planet: DiagramPlanet; moonIllumination?: number }) {
+  // Saturn's ring reaches ~2.05r, so r=18 keeps every body inside the 80-unit box.
+  const markup = planetBodyMarkup(planet, `birth-${planet}`, 18, moonIllumination);
+  return <svg viewBox="-40 -40 80 80" className="birth-chart-planet" aria-hidden="true" dangerouslySetInnerHTML={{ __html: markup }} />;
+}
+
 function BirthChartPanel({ snapshot }: { snapshot: BirthSnapshot }) {
   const rows = [
-    { label: "Horoscope sign (rashi)", value: `${snapshot.rashi.name} · ${snapshot.rashi.nepali} (${snapshot.rashi.sign})` },
-    { label: "Moon at birth", value: `${snapshot.moon} · ${snapshot.moonNakshatra}` },
-    { label: "Saturn at birth", value: snapshot.saturn },
-    { label: "Mars at birth", value: snapshot.mars },
+    {
+      label: "Horoscope sign (rashi)",
+      value: `${snapshot.rashi.name} · ${snapshot.rashi.nepali} (${snapshot.rashi.sign})`,
+      // U+FE0E asks for the plain text glyph rather than a colored emoji.
+      visual: <span className="birth-chart-sign" aria-hidden="true">{snapshot.rashiSymbol}{"\uFE0E"}</span>,
+    },
+    {
+      label: "Moon at birth",
+      value: `${snapshot.moon} · ${snapshot.moonNakshatra}`,
+      visual: <PlanetImage planet="moon" moonIllumination={snapshot.moonIllumination} />,
+    },
+    { label: "Saturn at birth", value: snapshot.saturn, visual: <PlanetImage planet="saturn" /> },
+    { label: "Mars at birth", value: snapshot.mars, visual: <PlanetImage planet="mars" /> },
   ];
   return (
     <div className="birth-chart" aria-label="Your birth chart">
       {rows.map((row) => (
-        <Field key={row.label} label={row.label}>
-          <input type="text" value={row.value} readOnly aria-readonly="true" tabIndex={-1} className="input" />
-        </Field>
+        <div key={row.label} className="birth-chart-cell">
+          <Field label={row.label}>
+            <input type="text" value={row.value} readOnly aria-readonly="true" tabIndex={-1} className="input" />
+          </Field>
+          <div className="birth-chart-visual">{row.visual}</div>
+        </div>
       ))}
       <p className="birth-chart-note">Vedic (sidereal, Lahiri) positions. Birth time is taken from the chosen part of the day, so the Moon may be off by a few degrees.</p>
     </div>

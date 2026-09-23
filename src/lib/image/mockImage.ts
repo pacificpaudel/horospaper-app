@@ -192,7 +192,7 @@ export function generateMockHoroscopeImageSvg(opts: {
   <path d="M112 1215c190-48 345 45 500-5s300-60 410 12" fill="none" stroke="#20314d" stroke-width="5" stroke-dasharray="12 20" opacity="0.55" />`;
 
   if (targetWidth === WIDTH && targetHeight === HEIGHT) {
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}">${artwork}${planetDiagrams}${galaxy}${dateHeader}${luckMeter}</svg>`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}">${artwork}${galaxy}${planetDiagrams}${dateHeader}${luckMeter}</svg>`;
   }
 
   // A taller/narrower target (e.g. a phone wallpaper canvas) reuses the same
@@ -201,8 +201,8 @@ export function generateMockHoroscopeImageSvg(opts: {
   // fresh in the real target coordinate space so they stay correctly inset.
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${targetWidth}" height="${targetHeight}" viewBox="0 0 ${targetWidth} ${targetHeight}">
   <svg x="0" y="0" width="${targetWidth}" height="${targetHeight}" viewBox="0 0 ${WIDTH} ${HEIGHT}" preserveAspectRatio="xMidYMid slice">${artwork}</svg>
-  ${planetDiagrams}
   ${galaxy}
+  ${planetDiagrams}
   ${dateHeader}
   ${luckMeter}
 </svg>`;

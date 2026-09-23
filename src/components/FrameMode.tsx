@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import Image from "next/image";
+import { FullscreenButton } from "./FullscreenButton";
 
 const WAKE_LOCK_RETRY_MS = 20 * 1000;
 
@@ -125,7 +126,10 @@ export function FrameMode({
         className="frame-mode-image"
       />
       <video ref={videoRef} src={KEEP_AWAKE_VIDEO_SRC} muted loop autoPlay playsInline aria-hidden="true" className="frame-mode-keepawake" />
-      <span className="frame-mode-version" aria-hidden="true">Version 2.0</span>
+      <span className="wallpaper-version" aria-hidden="true">Version 2.0</span>
+      {/* The browser refuses to re-enter fullscreen without a user gesture
+          after it force-exits it (see above) -- this is that gesture. */}
+      <FullscreenButton target={containerRef} className="download-button frame-mode-fullscreen" />
     </div>
   );
 }

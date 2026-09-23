@@ -1,4 +1,5 @@
-import { getPlanetPosition } from "./ephemeris";
+import { getMoonPhase, getPlanetPosition } from "./ephemeris";
+import { ZODIAC_SIGNS } from "./constants";
 import { tropicalToSidereal } from "./zodiac";
 import { formatSignPosition, NAKSHATRAS, nakshatraIndex, Rashi, rashiForMoon } from "./rashi";
 
@@ -8,7 +9,11 @@ import { formatSignPosition, NAKSHATRAS, nakshatraIndex, Rashi, rashiForMoon } f
 
 export interface BirthSnapshot {
   rashi: Rashi;
+  /** Zodiac glyph of the rashi's sign, e.g. "♐". */
+  rashiSymbol: string;
   moon: string;
+  /** Lit fraction of the Moon at birth, 0-1 -- drives the drawn phase. */
+  moonIllumination: number;
   moonNakshatra: string;
   saturn: string;
   mars: string;
@@ -19,9 +24,12 @@ export function computeBirthSnapshot(birthDateTimeUtc: Date): BirthSnapshot {
   const sidereal = (planet: "moon" | "saturn" | "mars") =>
     tropicalToSidereal(getPlanetPosition(planet, birthDateTimeUtc).longitude, birthDateTimeUtc);
   const moon = sidereal("moon");
+  const rashi = rashiForMoon(moon);
   return {
-    rashi: rashiForMoon(moon),
+    rashi,
+    rashiSymbol: ZODIAC_SIGNS.find((z) => z.name === rashi.sign)?.symbol ?? "",
     moon: formatSignPosition(moon),
+    moonIllumination: getMoonPhase(birthDateTimeUtc).illumination,
     moonNakshatra: NAKSHATRAS[nakshatraIndex(moon)],
     saturn: formatSignPosition(sidereal("saturn")),
     mars: formatSignPosition(sidereal("mars")),

@@ -61,9 +61,19 @@ function localDateString(timezone: string): string {
 // The luck-meter bar is baked into the image itself (see luckMeterOverlay.ts)
 // so it's included in downloads and frame mode too -- alt text carries the
 // score for accessibility instead of a duplicate on-page overlay.
-function HoroscopeArtwork({ imageUrl, isMobile, luckScore }: { imageUrl: string; isMobile: boolean; luckScore: number }) {
+function HoroscopeArtwork({
+  imageUrl,
+  isMobile,
+  luckScore,
+  frameRef,
+}: {
+  imageUrl: string;
+  isMobile: boolean;
+  luckScore: number;
+  frameRef: React.RefObject<HTMLDivElement | null>;
+}) {
   return (
-    <div className="output-frame">
+    <div ref={frameRef} className="output-frame">
       <Image
         src={imageUrl}
         alt={`Today's horoscope wallpaper. Your luck today: ${luckScore}%.`}
@@ -73,6 +83,7 @@ function HoroscopeArtwork({ imageUrl, isMobile, luckScore }: { imageUrl: string;
         unoptimized
         className="output-image"
       />
+      <span className="wallpaper-version" aria-hidden="true">Version 2.0</span>
     </div>
   );
 }
@@ -85,6 +96,7 @@ export default function HomePage() {
   const [frameMode, setFrameMode] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("DESKTOP");
   const isMobile = useIsMobileViewport();
+  const artworkRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     ensureGuestId();
@@ -164,9 +176,9 @@ export default function HomePage() {
 
     return (
       <div className="output-page flex min-h-0 flex-1 flex-col">
-        <NavBar downloadUrl={imageUrl} onLogoClick={() => setHoroscope(null)} />
+        <NavBar downloadUrl={imageUrl} fullscreenTarget={artworkRef} onLogoClick={() => setHoroscope(null)} />
         <main className="output-canvas mx-auto w-full max-w-6xl px-5 md:px-8">
-          <HoroscopeArtwork key={imageUrl} imageUrl={imageUrl} isMobile={isMobile} luckScore={luckScore} />
+          <HoroscopeArtwork key={imageUrl} imageUrl={imageUrl} isMobile={isMobile} luckScore={luckScore} frameRef={artworkRef} />
         </main>
       </div>
     );
