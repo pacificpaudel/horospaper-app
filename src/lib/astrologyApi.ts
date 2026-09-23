@@ -63,7 +63,7 @@ interface ApiPlanet {
 
 function cacheKey(input: BirthChartInput): string {
   const digest = createHash("sha256").update(JSON.stringify(input)).digest("hex").slice(0, 32);
-  return `birthchart:v2:${digest}`;
+  return `birthchart:v3:${digest}`;
 }
 
 async function post<T>(path: string, apiKey: string, body: unknown, signal: AbortSignal): Promise<T> {
@@ -131,7 +131,9 @@ export async function fetchKundli(input: Omit<BirthChartInput, "language">): Pro
   const apiKey = process.env.FREE_ASTROLOGY_API_KEY;
   if (!apiKey) return null;
 
-  const key = `kundli:v2:${createHash("sha256").update(JSON.stringify(input)).digest("hex").slice(0, 32)}`;
+  // v3: v2 could be poisoned by a request made with missing/defaulted (0,0)
+  // coordinates, which throws the ascendant off by whole signs.
+  const key = `kundli:v3:${createHash("sha256").update(JSON.stringify(input)).digest("hex").slice(0, 32)}`;
   const cached = await redis.get<KundliData>(key).catch(() => null);
   if (cached) return cached;
 

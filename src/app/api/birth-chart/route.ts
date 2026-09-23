@@ -8,10 +8,11 @@ const InputSchema = z.object({
   birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   birthTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/),
   timezone: z.string().refine(isValidTimeZone),
-  // Geocentric planet positions don't depend on the observer, so a birth
-  // place that isn't picked from the city list yet can fall back to 0,0.
-  latitude: z.number().min(-90).max(90).default(0),
-  longitude: z.number().min(-180).max(180).default(0),
+  // Required: planet signs don't depend on the observer, but the lagna does
+  // -- defaulting to 0,0 (Greenwich) once drew a Pokhara chart with a lagna
+  // two signs off.
+  latitude: z.number().min(-90).max(90),
+  longitude: z.number().min(-180).max(180),
   // All freeastrologyapi.com calls use Nepali.
   language: z.literal("ne").default("ne"),
 });

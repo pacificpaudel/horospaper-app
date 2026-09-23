@@ -609,6 +609,10 @@ function BirthChartPanel({ chart }: { chart: BirthChartView }) {
             : ""}
           Enter your time of birth to see your exact rashi and kundli.
         </p>
+      ) : !chart.chartSvg ? (
+        <p className="birth-chart-warning" role="status">
+          Choose your birth place from the list to see your kundli -- the lagna depends on where you were born.
+        </p>
       ) : (
         possibleRashis.length > 1 && (
           <p className="birth-chart-warning" role="status">

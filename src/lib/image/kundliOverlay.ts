@@ -77,7 +77,10 @@ export function buildKundliMarkup(width: number, height: number, kundli: KundliD
   const gap = Math.round(minDim * 0.015);
   const x0 = Math.round((width - size) / 2);
   const y0 = Math.round(luckMeterTop(width, height) - gap - size);
-  return kundliChartMarkup(x0, y0, size, kundli, onDate);
+  // Chart only -- the Mahadasha (and any longer reading) stays in the form,
+  // keeping the wallpaper uncluttered. `onDate` is kept for callers.
+  void onDate;
+  return kundliChartMarkup(x0, y0, size, kundli, null);
 }
 
 /**
