@@ -52,7 +52,7 @@ function hashSeed(input: string): number {
  * external image-generation API is configured. Deterministic per seed so
  * regenerating the same day's horoscope produces a stable image.
  */
-export function generateMockHoroscopeImageSvg(opts: {
+export async function generateMockHoroscopeImageSvg(opts: {
   seed: string;
   style: ImageStyle;
   luckScore: number;
@@ -65,7 +65,7 @@ export function generateMockHoroscopeImageSvg(opts: {
   moonIllumination?: number;
   target?: { width: number; height: number };
   flushPlanets?: boolean;
-}): string {
+}): Promise<string> {
   const rand = mulberry32(hashSeed(opts.seed));
   const [, bg2, accent] = PALETTES[opts.style];
   const astrology = opts.astrology;
@@ -134,9 +134,10 @@ export function generateMockHoroscopeImageSvg(opts: {
   const targetWidth = opts.target?.width ?? WIDTH;
   const targetHeight = opts.target?.height ?? HEIGHT;
   const planetDiagrams = astrology ? buildPlanetDiagramsMarkup(astrology, targetWidth, targetHeight, opts.flushPlanets) : "";
+  const panchangMarkup = await buildPanchangMarkup(targetWidth, targetHeight, opts.panchang ?? null);
   const luckMeter =
     (opts.kundli ? buildKundliMarkup(targetWidth, targetHeight, opts.kundli, astrology?.generationDate ?? dateOnlyString(new Date())) : "") +
-    buildPanchangMarkup(targetWidth, targetHeight, opts.panchang ?? null) +
+    panchangMarkup +
     buildLuckMeterMarkup(targetWidth, targetHeight, opts.luckScore);
   const galaxy = buildGalaxyMarkup(targetWidth, targetHeight, astrology?.generationDate ?? dateOnlyString(new Date()));
   const dateHeader = buildDateHeaderMarkup(

@@ -44,6 +44,7 @@ export async function withWallpaperOverlay(
     height = metadata.height ?? 1350;
   }
 
-  const overlay = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${buildGalaxyMarkup(width, height, astrology.generationDate)}${buildPlanetDiagramsMarkup(astrology, width, height, flushPlanets)}${buildDateHeaderMarkup(width, height, astrology.generationDate, reading.intent)}${reading.kundli ? buildKundliMarkup(width, height, reading.kundli, astrology.generationDate) : ""}${buildPanchangMarkup(width, height, reading.panchang)}${buildLuckMeterMarkup(width, height, reading.luckScore)}</svg>`;
+  const panchangMarkup = await buildPanchangMarkup(width, height, reading.panchang);
+  const overlay = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${buildGalaxyMarkup(width, height, astrology.generationDate)}${buildPlanetDiagramsMarkup(astrology, width, height, flushPlanets)}${buildDateHeaderMarkup(width, height, astrology.generationDate, reading.intent)}${reading.kundli ? buildKundliMarkup(width, height, reading.kundli, astrology.generationDate) : ""}${panchangMarkup}${buildLuckMeterMarkup(width, height, reading.luckScore)}</svg>`;
   return base.composite([{ input: Buffer.from(overlay), top: 0, left: 0 }]).toBuffer();
 }

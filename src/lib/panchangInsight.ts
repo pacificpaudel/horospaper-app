@@ -22,13 +22,19 @@ export interface PanchangInsight {
 const InsightSchema = z.object({
   sentiment: z.number().min(-1).max(1),
   theme: z.string().refine(isThemeTag),
-  summary: z.string().max(300),
-  suitable_activities: z.array(z.string().max(60)).max(6),
-  avoided_activities: z.array(z.string().max(60)).max(6),
+  // Devanagari runs longer in UTF-16 code units than the equivalent
+  // English sentence (conjuncts/matras add combining characters), so this
+  // cap is looser than a plain-English one would need.
+  summary: z.string().max(400),
+  suitable_activities: z.array(z.string().max(80)).max(6),
+  avoided_activities: z.array(z.string().max(80)).max(6),
 });
 
 function buildPrompt(panchang: PanchangData): string {
-  return `You are a traditional Hindu Panchang interpreter. Below are today's exact Panchang values, already calculated -- use ONLY these values; never calculate or guess a tithi, nakshatra, yoga, or karana yourself.
+  // The Panchang values below are already in Devanagari (see panchang.ts's
+  // language: "hi" -- Sanskrit tithi/nakshatra/yoga terms are spelled
+  // identically in Hindi and Nepali).
+  return `You are a traditional Hindu Panchang interpreter writing for Nepali readers. Below are today's exact Panchang values, already calculated -- use ONLY these values; never calculate or guess a tithi, nakshatra, yoga, or karana yourself.
 
 <panchang>
 Weekday (vara): ${panchang.weekday}
@@ -43,9 +49,9 @@ ${panchang.moonSign ? `Moon sign: ${panchang.moonSign}` : ""}
 Using traditional Jyotish/Panchang concepts, interpret this combination as JSON with exactly these keys:
 - "sentiment": a number from -1 (traditionally a difficult, obstacle-prone day) to 1 (traditionally a very favorable day), based on the tithi/nakshatra/yoga combination above.
 - "theme": the single life area this day's Panchang traditionally favors, chosen from exactly this list: ${Object.keys(THEME_TAGS).join(", ")}.
-- "summary": one short, plain-English sentence on the day's overall character. Present this as traditional belief, not scientific fact; make no medical or financial claims.
-- "suitable_activities": up to 4 short traditionally suitable activities for this Panchang combination.
-- "avoided_activities": up to 3 short traditionally avoided activities (e.g. during Rahu Kalam, or for this tithi/yoga).
+- "summary": one short sentence, in Nepali (Devanagari script), on the day's overall character. Present this as traditional belief, not scientific fact; make no medical or financial claims.
+- "suitable_activities": up to 4 short traditionally suitable activities for this Panchang combination, in Nepali.
+- "avoided_activities": up to 3 short traditionally avoided activities (e.g. during Rahu Kalam, or for this tithi/yoga), in Nepali.
 
 Respond with ONLY the JSON object.`;
 }
@@ -76,7 +82,8 @@ async function interpretWithLlm(panchang: PanchangData): Promise<PanchangInsight
  * cacheKey does it, so the same day+place always hits the same entry.
  */
 export async function getPanchangInsight(panchang: PanchangData, cacheKey: string): Promise<PanchangInsight | null> {
-  const key = `panchang-insight:v1:${cacheKey}`;
+  // v2: summary/activities are now written in Nepali, not English.
+  const key = `panchang-insight:v2:${cacheKey}`;
   const cached = await redis.get<PanchangInsight>(key).catch(() => null);
   if (cached) return cached;
 

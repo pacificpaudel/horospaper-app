@@ -59,7 +59,10 @@ async function requestPanchang(apiKey: string, year: number, month: number, day:
     // Judged at sunrise (the traditional start of the Panchang day), not
     // noon -- hour/minute here only need to land after actual sunrise so
     // the API resolves "today's" values rather than yesterday's leftovers.
-    body: JSON.stringify({ year, month, day, hour: 6, minute: 0, lat, lng, tz_str: tz, ayanamsha: "lahiri" }),
+    // language: "hi" -- the endpoint doesn't offer "ne", but tithi/
+    // nakshatra/yoga/weekday are Sanskrit terms spelled identically in
+    // Devanagari for Hindi and Nepali, so "hi" gives correct Nepali names.
+    body: JSON.stringify({ year, month, day, hour: 6, minute: 0, lat, lng, tz_str: tz, ayanamsha: "lahiri", language: "hi" }),
     signal,
   });
 }
@@ -74,7 +77,8 @@ export async function fetchPanchang(input: PanchangInput): Promise<PanchangData 
   const apiKey = process.env.FREEASTRO_API_KEY;
   if (!apiKey) return null;
 
-  const key = `panchang:v1:${panchangCacheKey(input)}`;
+  // v2: now requests Devanagari (Hindi/"hi") names instead of English.
+  const key = `panchang:v2:${panchangCacheKey(input)}`;
   const cached = await redis.get<PanchangData>(key).catch(() => null);
   if (cached) return cached;
 

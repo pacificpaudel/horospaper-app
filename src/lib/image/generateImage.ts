@@ -8,7 +8,7 @@ import { generateOpenverseImage } from "./openverseImage";
 import { withWallpaperOverlay, TargetCanvas } from "./compositeOverlay";
 import { createHash } from "node:crypto";
 
-const IMAGE_GENERATOR_VERSION = "daily-image-v18";
+const IMAGE_GENERATOR_VERSION = "daily-image-v19";
 
 // Source images (a random-aspect-ratio Openverse photo, OpenAI's fixed
 // portrait size, or the mock SVG's native 4:5) rarely match either wallpaper
@@ -124,9 +124,11 @@ export async function generateHoroscopeImage(params: {
     emotionalTheme,
     moonIllumination: astrology.today.moonIllumination,
   };
-  const svg = generateMockHoroscopeImageSvg({ ...svgOpts, target: DESKTOP_TARGET });
-  const mobileSvg = generateMockHoroscopeImageSvg({ ...svgOpts, target: MOBILE_TARGET });
-  const frameSvg = generateMockHoroscopeImageSvg({ ...svgOpts, target: FRAME_TARGET, flushPlanets: true });
+  const [svg, mobileSvg, frameSvg] = await Promise.all([
+    generateMockHoroscopeImageSvg({ ...svgOpts, target: DESKTOP_TARGET }),
+    generateMockHoroscopeImageSvg({ ...svgOpts, target: MOBILE_TARGET }),
+    generateMockHoroscopeImageSvg({ ...svgOpts, target: FRAME_TARGET, flushPlanets: true }),
+  ]);
   const [{ url }, { url: mobileUrl }, { url: frameUrl }] = await Promise.all([
     saveGeneratedFile(`${assetId}-${IMAGE_GENERATOR_VERSION}.svg`, svg, "image/svg+xml"),
     saveGeneratedFile(`${assetId}-${IMAGE_GENERATOR_VERSION}-mobile.svg`, mobileSvg, "image/svg+xml"),
