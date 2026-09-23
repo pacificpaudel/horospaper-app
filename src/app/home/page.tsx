@@ -83,7 +83,7 @@ function HoroscopeArtwork({
         unoptimized
         className="output-image"
       />
-      <span className="wallpaper-version" aria-hidden="true">Version 2.0</span>
+      <span className="wallpaper-version" aria-hidden="true">Version 3.0</span>
     </div>
   );
 }
