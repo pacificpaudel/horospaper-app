@@ -71,12 +71,24 @@ export function kundliFromNatal(natal: NatalChart): KundliData | null {
  * square centered horizontally, its bottom just above the luck meter, with
  * the Mahadasha running on `onDate` ("YYYY-MM-DD") in a header strip.
  */
-export function buildKundliMarkup(width: number, height: number, kundli: KundliData, onDate: string): string {
+/**
+ * The kundli's own box (x0, y0 = top-left, plus its side length and the
+ * margin it keeps from other overlays) for a `width`x`height` canvas.
+ * Exported so other overlays (the Panchang panel) can align against it
+ * without recomputing -- and risking drifting out of sync with -- this
+ * geometry themselves.
+ */
+export function kundliRect(width: number, height: number): { x0: number; y0: number; size: number; gap: number } {
   const minDim = Math.min(width, height);
   const size = Math.round(minDim * 0.26);
   const gap = Math.round(minDim * 0.015);
   const x0 = Math.round((width - size) / 2);
   const y0 = Math.round(luckMeterTop(width, height) - gap - size);
+  return { x0, y0, size, gap };
+}
+
+export function buildKundliMarkup(width: number, height: number, kundli: KundliData, onDate: string): string {
+  const { x0, y0, size } = kundliRect(width, height);
   // Chart only -- the Mahadasha (and any longer reading) stays in the form,
   // keeping the wallpaper uncluttered. `onDate` is kept for callers.
   void onDate;

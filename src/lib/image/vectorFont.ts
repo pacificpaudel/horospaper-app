@@ -85,6 +85,15 @@ const GLYPHS: Record<string, Glyph> = {
   "-": { width: 0.38, strokes: [[[0.05, 0.55], [0.33, 0.55]]] },
   // Middle dot separator, e.g. "HOPEFUL · PROSPERITY".
   "·": { width: 0.24, strokes: [arc(0.12, 0.5, 0.05, 0.05, 0, 360, 8)] },
+  // For wrapped prose sentences (the Panchang summary).
+  ".": { width: 0.2, strokes: [arc(0.1, 0.94, 0.06, 0.06, 0, 360, 8)] },
+  ",": { width: 0.22, strokes: [[[0.14, 0.88], [0.14, 0.94], [0.04, 1.08]]] },
+  "'": { width: 0.16, strokes: [[[0.08, 0], [0.05, 0.2]]] },
+  // For the luck meter's percentage, e.g. "65%".
+  "%": {
+    width: 0.66,
+    strokes: [arc(0.15, 0.17, 0.13, 0.17, 0, 360, 12), arc(0.51, 0.83, 0.13, 0.17, 0, 360, 12), [[0.02, 1], [0.64, 0]]],
+  },
 };
 
 const SPACE_WIDTH = 0.34;
@@ -141,6 +150,29 @@ export function buildVectorTextMarkup(text: string, x: number, y: number, size: 
     cursor += glyph.width * size + tracking;
   }
   return `<g opacity="${opacity}">${body}</g>`;
+}
+
+/**
+ * Greedily wraps `text` into lines no wider than `maxWidth` at `size`,
+ * breaking on spaces. A single word wider than `maxWidth` still gets its
+ * own line (never split mid-word). Used for prose (the Panchang summary)
+ * where a single fitSize shrink would make the text illegibly small.
+ */
+export function wrapVectorText(text: string, maxWidth: number, size: number, style: TextStyle = {}): string[] {
+  const words = text.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let line = "";
+  for (const word of words) {
+    const candidate = line ? `${line} ${word}` : word;
+    if (line && measureVectorText(candidate, size, style) > maxWidth) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = candidate;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
 }
 
 /** Renders `text` horizontally centered on `centerX`, with its top at `y`. */

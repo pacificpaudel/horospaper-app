@@ -6,7 +6,9 @@ import { buildDateHeaderMarkup } from "./dateHeaderOverlay";
 import { DailyIntent } from "./dailyIntent";
 import { buildGalaxyMarkup } from "./galaxyOverlay";
 import { buildKundliMarkup } from "./kundliOverlay";
+import { buildPanchangMarkup } from "./panchangOverlay";
 import type { KundliData } from "@/lib/astrologyApi";
+import type { DailyReading } from "@/lib/dailyReading";
 import { dateOnlyString } from "@/lib/astrology/dailyData";
 
 const WIDTH = 1080;
@@ -56,6 +58,7 @@ export function generateMockHoroscopeImageSvg(opts: {
   luckScore: number;
   intent?: DailyIntent;
   kundli?: KundliData | null;
+  panchang?: DailyReading["panchang"];
   astrology?: StructuredAstrologyData;
   luckyTheme?: string;
   emotionalTheme?: string;
@@ -131,7 +134,10 @@ export function generateMockHoroscopeImageSvg(opts: {
   const targetWidth = opts.target?.width ?? WIDTH;
   const targetHeight = opts.target?.height ?? HEIGHT;
   const planetDiagrams = astrology ? buildPlanetDiagramsMarkup(astrology, targetWidth, targetHeight, opts.flushPlanets) : "";
-  const luckMeter = (opts.kundli ? buildKundliMarkup(targetWidth, targetHeight, opts.kundli, astrology?.generationDate ?? dateOnlyString(new Date())) : "") + buildLuckMeterMarkup(targetWidth, targetHeight, opts.luckScore);
+  const luckMeter =
+    (opts.kundli ? buildKundliMarkup(targetWidth, targetHeight, opts.kundli, astrology?.generationDate ?? dateOnlyString(new Date())) : "") +
+    buildPanchangMarkup(targetWidth, targetHeight, opts.panchang ?? null) +
+    buildLuckMeterMarkup(targetWidth, targetHeight, opts.luckScore);
   const galaxy = buildGalaxyMarkup(targetWidth, targetHeight, astrology?.generationDate ?? dateOnlyString(new Date()));
   const dateHeader = buildDateHeaderMarkup(
     targetWidth,
