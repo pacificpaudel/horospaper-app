@@ -93,7 +93,9 @@ function defaultsFrom(profile?: BirthProfileDTO | null): BirthProfileFormValues 
     birthDateBs: profile?.birthDate ? adToBs(profile.birthDate.slice(0, 10)) ?? "" : "",
     ...timeDefaults(profile),
     birthLocation: profile?.birthLocation ?? "",
-    birthCoords: null,
+    // Coordinates are needed for the ascendant (lagna) in the kundli; a
+    // saved profile already has them, and editing the location clears them.
+    birthCoords: profile ? { latitude: profile.latitude, longitude: profile.longitude } : null,
     // The parent only renders this form once it already knows whether a
     // profile exists (see HomePage's `profile === undefined` loading gate),
     // so this never actually runs during the server-rendered pass -- safe
@@ -155,14 +157,18 @@ export function BirthProfileForm({
   }
 
   const period = periodFor(values.birthTimeMode);
-  const birthTime = period ? period.mid : values.birthTimeExact;
+  // With only a date so far, still show the panel -- judged across the
+  // whole day -- rather than nothing, and prompt for the time.
+  const timeMissing = !period && !values.birthTimeExact;
+  const birthTime = period ? period.mid : values.birthTimeExact || "12:00";
   const chart = useBirthSnapshot({
     birthDate: values.birthDate,
     birthTime,
-    window: period ? { start: period.start, end: period.end } : null,
+    window: period ? { start: period.start, end: period.end } : timeMissing ? { start: "00:00", end: "23:59" } : null,
     timezone: values.timezone,
     coords: values.birthCoords,
     language: "ne",
+    timeMissing,
   });
 
   function validate(): boolean {
@@ -425,9 +431,11 @@ interface BirthChartView {
   /** Every rashi possible across the chosen part of the day (1 = certain). */
   possibleRashis: string[];
   source: "freeastrologyapi" | "local";
-  /** Kundli chart SVG from the API (shown as an image), when available. */
+  /** Kundli chart SVG (the API's, else the app's own), shown as an image. */
   chartSvg: string | null;
   mahadasha: { lord: string; start: string; end: string } | null;
+  /** Only a date is entered so far -- the panel asks for the birth time. */
+  timeMissing: boolean;
 }
 
 interface ApiChart {
@@ -454,6 +462,7 @@ function useBirthSnapshot({
   timezone,
   coords,
   language,
+  timeMissing,
 }: {
   birthDate: string;
   birthTime: string;
@@ -461,6 +470,7 @@ function useBirthSnapshot({
   timezone: string;
   coords: { latitude: number; longitude: number } | null;
   language: "ne";
+  timeMissing: boolean;
 }): BirthChartView | null {
   const [view, setView] = useState<BirthChartView | null>(null);
   const valid = /^\d{4}-\d{2}-\d{2}$/.test(birthDate) && /^\d{2}:\d{2}$/.test(birthTime) && Boolean(timezone);
@@ -473,15 +483,34 @@ function useBirthSnapshot({
     if (!valid) return;
     let cancelled = false;
     let apiTimer: ReturnType<typeof setTimeout> | undefined;
-    import("@/lib/astrology/birthSnapshot")
-      .then(({ computeBirthSnapshot, rashisBetween, symbolForSign }) => {
+    Promise.all([import("@/lib/astrology/birthSnapshot"), import("@/lib/astrology/natalChart"), import("@/lib/image/kundliOverlay")])
+      .then(([{ computeBirthSnapshot, rashisBetween, symbolForSign }, { computeNatalChart }, { kundliFromNatal, buildKundliSvg }]) => {
         const toUtc = (time: string) => fromZonedTime(`${birthDate}T${time}:00`, timezone);
         const birthUtc = toUtc(birthTime);
         if (cancelled || Number.isNaN(birthUtc.getTime())) return;
         const local = computeBirthSnapshot(birthUtc);
         const possibleRashis =
           windowStart && windowEnd ? rashisBetween(toUtc(windowStart), toUtc(windowEnd)).map((r) => r.name) : [local.rashi.name];
-        setView({ snapshot: local, possibleRashis, source: "local", chartSvg: null, mahadasha: null });
+        // The app's own kundli (it matches the API's house for house), so a
+        // chart shows even without the API. Needs the time (for the lagna)
+        // and the birth place's coordinates.
+        const localKundli =
+          !timeMissing && latitude !== undefined && longitude !== undefined
+            ? kundliFromNatal(computeNatalChart(birthUtc, latitude, longitude, "VEDIC"))
+            : null;
+        setView({
+          snapshot: local,
+          possibleRashis,
+          source: "local",
+          chartSvg: localKundli ? buildKundliSvg(localKundli) : null,
+          mahadasha: (() => {
+            const today = new Date().toISOString().slice(0, 10);
+            return localKundli?.mahadashas?.find((p) => p.start <= today && today < p.end) ?? null;
+          })(),
+          timeMissing,
+        });
+        // A chart for an unknown time would be wrong, so don't spend API quota on it.
+        if (timeMissing) return;
 
         // Debounced: the API's free plan allows 50 calls a day, so only ask
         // once the user has stopped editing.
@@ -504,8 +533,9 @@ function useBirthSnapshot({
                 },
                 possibleRashis,
                 source: "freeastrologyapi",
-                chartSvg: chart.chartSvg,
+                chartSvg: chart.chartSvg ?? (localKundli ? buildKundliSvg(localKundli) : null),
                 mahadasha: chart.mahadasha,
+                timeMissing,
               });
             })
             .catch(() => {});
@@ -516,7 +546,7 @@ function useBirthSnapshot({
       cancelled = true;
       clearTimeout(apiTimer);
     };
-  }, [valid, birthDate, birthTime, windowStart, windowEnd, timezone, latitude, longitude, language]);
+  }, [valid, birthDate, birthTime, windowStart, windowEnd, timezone, latitude, longitude, language, timeMissing]);
 
   return valid ? view : null;
 }
@@ -572,10 +602,19 @@ function BirthChartPanel({ chart }: { chart: BirthChartView }) {
           Current Mahadasha: <strong>{chart.mahadasha.lord}</strong> ({chart.mahadasha.start.slice(0, 4)}–{chart.mahadasha.end.slice(0, 4)})
         </p>
       )}
-      {possibleRashis.length > 1 && (
+      {chart.timeMissing ? (
         <p className="birth-chart-warning" role="status">
-          Depending on your exact birth time, your rashi is {possibleRashis.join(" or ")} -- choose &quot;Exact time&quot; to be sure.
+          {possibleRashis.length > 1
+            ? `Your rashi is ${possibleRashis.join(" or ")} depending on your birth time. `
+            : ""}
+          Enter your time of birth to see your exact rashi and kundli.
         </p>
+      ) : (
+        possibleRashis.length > 1 && (
+          <p className="birth-chart-warning" role="status">
+            Depending on your exact birth time, your rashi is {possibleRashis.join(" or ")} -- choose &quot;Exact time&quot; to be sure.
+          </p>
+        )
       )}
       <p className="birth-chart-note">
         Vedic (sidereal, Lahiri) positions{chart.source === "freeastrologyapi" ? " from freeastrologyapi.com" : ", calculated in your browser"}.

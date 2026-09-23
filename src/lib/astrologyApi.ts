@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import { fromZonedTime, getTimezoneOffset } from "date-fns-tz";
 import { redis, TTL_SECONDS } from "@/lib/redis";
 import { formatSignPosition, NAKSHATRAS, nakshatraIndex, RASHIS } from "@/lib/astrology/rashi";
+import type { Mahadasha } from "@/lib/astrology/vimshottari";
+import { outlineChartSvg } from "@/lib/image/chartSvgOutline";
 
 // Birth-chart placements from freeastrologyapi.com (Vedic, Lahiri
 // ayanamsa), shown in the birth-profile form once a date of birth is
@@ -96,7 +98,25 @@ function currentMahadasha(output: unknown): ApiBirthChart["mahadasha"] {
 export interface KundliData {
   ascendantSign: number;
   planets: { name: string; sign: number; retro: boolean }[];
+  /** All Vimshottari Mahadashas, so the one running on any given day can be shown. */
+  mahadashas: Mahadasha[] | null;
+  /**
+   * The API's own chart SVG with its text outlined (see chartSvgOutline.ts)
+   * -- pasted onto the wallpaper as-is, identical to the form's image.
+   */
+  chartSvg: string | null;
   source: "freeastrologyapi" | "local";
+}
+
+/** The maha-dasas output: a JSON *string* of {"1": {Lord, start_time, end_time}, ...}. */
+function parseMahadashas(output: unknown): Mahadasha[] | null {
+  try {
+    const periods = typeof output === "string" ? (JSON.parse(output) as Record<string, { Lord: string; start_time: string; end_time: string }>) : null;
+    if (!periods) return null;
+    return Object.values(periods).map((p) => ({ lord: p.Lord, start: p.start_time.slice(0, 10), end: p.end_time.slice(0, 10) }));
+  } catch {
+    return null;
+  }
 }
 
 const KUNDLI_PLANETS = ["Sun", "Moon", "Mars", "Mercury", "Jupiter", "Venus", "Saturn", "Rahu", "Ketu"];
@@ -111,7 +131,7 @@ export async function fetchKundli(input: Omit<BirthChartInput, "language">): Pro
   const apiKey = process.env.FREE_ASTROLOGY_API_KEY;
   if (!apiKey) return null;
 
-  const key = `kundli:v1:${createHash("sha256").update(JSON.stringify(input)).digest("hex").slice(0, 32)}`;
+  const key = `kundli:v2:${createHash("sha256").update(JSON.stringify(input)).digest("hex").slice(0, 32)}`;
   const cached = await redis.get<KundliData>(key).catch(() => null);
   if (cached) return cached;
 
@@ -122,19 +142,23 @@ export async function fetchKundli(input: Omit<BirthChartInput, "language">): Pro
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const birth = {
+    year, month, date, hours, minutes, seconds: 0,
+    latitude: input.latitude,
+    longitude: input.longitude,
+    timezone,
+    config: { observation_point: "geocentric", ayanamsha: "lahiri", language: "ne" },
+  };
   try {
-    const payload = await post<{ output?: Record<string, ApiPlanet & { isRetro?: string }>[] }>(
-      "planets",
-      apiKey,
-      {
-        year, month, date, hours, minutes, seconds: 0,
-        latitude: input.latitude,
-        longitude: input.longitude,
-        timezone,
-        config: { observation_point: "geocentric", ayanamsha: "lahiri", language: "ne" },
-      },
-      controller.signal,
-    );
+    // 3 calls per person per week: planets (required), plus the chart image
+    // and maha-dasas (best effort).
+    const [planetsResult, chartResult, dashaResult] = await Promise.allSettled([
+      post<{ output?: Record<string, ApiPlanet & { isRetro?: string }>[] }>("planets", apiKey, birth, controller.signal),
+      post<{ output?: unknown }>("horoscope-chart-svg-code", apiKey, { ...birth, chart_config: CHART_CONFIG }, controller.signal),
+      post<{ output?: unknown }>("vimsottari/maha-dasas", apiKey, birth, controller.signal),
+    ]);
+    if (planetsResult.status === "rejected") throw planetsResult.reason;
+    const payload = planetsResult.value;
     const entries = Object.values(payload.output?.[0] ?? {}).filter((p) => typeof p?.current_sign === "number");
     const ascendant = entries.find((p) => p.name === "Ascendant");
     if (!ascendant) throw new Error("freeastrologyapi response missing Ascendant");
@@ -143,6 +167,11 @@ export async function fetchKundli(input: Omit<BirthChartInput, "language">): Pro
       planets: entries
         .filter((p) => KUNDLI_PLANETS.includes(p.name))
         .map((p) => ({ name: p.name, sign: p.current_sign, retro: String(p.isRetro) === "true" })),
+      mahadashas: dashaResult.status === "fulfilled" ? parseMahadashas(dashaResult.value.output) : null,
+      chartSvg: (() => {
+        const raw = chartResult.status === "fulfilled" ? parseChartSvg(chartResult.value.output) : null;
+        return raw ? outlineChartSvg(raw) : null;
+      })(),
       source: "freeastrologyapi",
     };
     await redis.set(key, kundli, { ex: KUNDLI_TTL_SECONDS }).catch(() => {});
@@ -208,7 +237,12 @@ export async function fetchBirthChart(input: BirthChartInput): Promise<ApiBirthC
       moonNakshatra: NAKSHATRAS[nakshatraIndex(moon.fullDegree)],
       saturn: formatSignPosition(saturn.fullDegree),
       mars: formatSignPosition(mars.fullDegree),
-      chartSvg: chartResult.status === "fulfilled" ? parseChartSvg(chartResult.value.output) : null,
+      // Outlined like the wallpaper's copy, so both show the identical chart;
+      // the raw SVG (browser-rendered text) only if some label can't be outlined.
+      chartSvg: (() => {
+        const raw = chartResult.status === "fulfilled" ? parseChartSvg(chartResult.value.output) : null;
+        return raw ? (outlineChartSvg(raw) ?? raw) : null;
+      })(),
       mahadasha: (() => {
         try {
           return dashaResult.status === "fulfilled" ? currentMahadasha(dashaResult.value.output) : null;

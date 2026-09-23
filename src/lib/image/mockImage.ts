@@ -131,7 +131,7 @@ export function generateMockHoroscopeImageSvg(opts: {
   const targetWidth = opts.target?.width ?? WIDTH;
   const targetHeight = opts.target?.height ?? HEIGHT;
   const planetDiagrams = astrology ? buildPlanetDiagramsMarkup(astrology, targetWidth, targetHeight, opts.flushPlanets) : "";
-  const luckMeter = (opts.kundli ? buildKundliMarkup(targetWidth, targetHeight, opts.kundli) : "") + buildLuckMeterMarkup(targetWidth, targetHeight, opts.luckScore);
+  const luckMeter = (opts.kundli ? buildKundliMarkup(targetWidth, targetHeight, opts.kundli, astrology?.generationDate ?? dateOnlyString(new Date())) : "") + buildLuckMeterMarkup(targetWidth, targetHeight, opts.luckScore);
   const galaxy = buildGalaxyMarkup(targetWidth, targetHeight, astrology?.generationDate ?? dateOnlyString(new Date()));
   const dateHeader = buildDateHeaderMarkup(
     targetWidth,
