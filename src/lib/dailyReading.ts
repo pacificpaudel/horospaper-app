@@ -6,7 +6,7 @@ import { rashiForMoon } from "@/lib/astrology/rashi";
 import { dateOnlyString } from "@/lib/astrology/dailyData";
 import { getDailyRashifal } from "@/lib/rashifal";
 import { adToBs } from "@/lib/nepaliDate";
-import { resolveProvider } from "@/lib/llm/generateHoroscope";
+import { generateJson } from "@/lib/llm/generateHoroscope";
 import { DailyIntent, isThemeTag, MoodTag, THEME_TAGS, ThemeTag } from "@/lib/image/dailyIntent";
 import type { KundliData } from "@/lib/astrologyApi";
 import { fetchPanchang, panchangCacheKey, PanchangData } from "@/lib/panchang";
@@ -145,14 +145,9 @@ Respond with ONLY the JSON object.`;
 }
 
 async function summarizeWithLlm(text: string, rashiName: string): Promise<RashifalSummary | null> {
-  const provider = resolveProvider();
-  if (provider === "mock") return null;
   try {
-    const prompt = buildSummaryPrompt(text, rashiName);
-    const raw =
-      provider === "anthropic"
-        ? await (await import("@/lib/llm/anthropicProvider")).generateJsonWithAnthropic(prompt)
-        : await (await import("@/lib/llm/openaiProvider")).generateJsonWithOpenAI(prompt);
+    const raw = await generateJson(buildSummaryPrompt(text, rashiName));
+    if (raw === null) return null;
     const parsed = LlmSummarySchema.parse(raw);
     return {
       sentiment: Math.round(parsed.sentiment * 100) / 100,

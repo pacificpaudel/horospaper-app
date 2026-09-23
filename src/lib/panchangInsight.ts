@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { redis } from "@/lib/redis";
 import { PanchangData } from "@/lib/panchang";
-import { resolveProvider } from "@/lib/llm/generateHoroscope";
+import { generateJson } from "@/lib/llm/generateHoroscope";
 import { ThemeTag, THEME_TAGS, isThemeTag } from "@/lib/image/dailyIntent";
 
 // Stage 2 of the Panchang pipeline: an LLM interprets the *exact* Panchang
@@ -51,14 +51,9 @@ Respond with ONLY the JSON object.`;
 }
 
 async function interpretWithLlm(panchang: PanchangData): Promise<PanchangInsight | null> {
-  const provider = resolveProvider();
-  if (provider === "mock") return null;
   try {
-    const prompt = buildPrompt(panchang);
-    const raw =
-      provider === "anthropic"
-        ? await (await import("@/lib/llm/anthropicProvider")).generateJsonWithAnthropic(prompt)
-        : await (await import("@/lib/llm/openaiProvider")).generateJsonWithOpenAI(prompt);
+    const raw = await generateJson(buildPrompt(panchang));
+    if (raw === null) return null;
     const parsed = InsightSchema.parse(raw);
     return {
       sentiment: Math.round(parsed.sentiment * 100) / 100,
