@@ -8,10 +8,41 @@ const NepaliDate = ((NepaliDateModule as unknown as { default?: typeof NepaliDat
 export const BS_MIN_YEAR = 2000;
 export const BS_MAX_YEAR = 2090;
 
+export const BS_MONTHS = [
+  "Baisakh", "Jestha", "Asar", "Shrawan", "Bhadra", "Ashwin",
+  "Kartik", "Mangsir", "Poush", "Magh", "Falgun", "Chaitra",
+];
+
 const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 function pad(n: number): string {
   return String(n).padStart(2, "0");
+}
+
+export function formatBs(year: number, month: number, day: number): string {
+  return `${year}-${pad(month)}-${pad(day)}`;
+}
+
+/** Days in BS month `month` (1-12) of `year` -- BS months run 29 to 32 days, varying by year. */
+export function bsMonthLength(year: number, month: number): number {
+  for (let day = 32; day >= 29; day--) {
+    if (bsToAd(formatBs(year, month, day))) return day;
+  }
+  return 30;
+}
+
+/** Weekday (0 = Sunday) the given BS date falls on, or null if it isn't a valid BS date. */
+export function bsWeekday(year: number, month: number, day: number): number | null {
+  const ad = bsToAd(formatBs(year, month, day));
+  if (!ad) return null;
+  const [y, m, d] = ad.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+}
+
+/** Today's date in BS, per the device's own calendar day. */
+export function bsToday(): string | null {
+  const now = new Date();
+  return adToBs(`${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`);
 }
 
 /** "YYYY-MM-DD" AD -> "YYYY-MM-DD" BS, or null if out of range / invalid. */

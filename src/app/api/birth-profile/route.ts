@@ -26,7 +26,10 @@ export async function POST(request: NextRequest) {
 
   let geo;
   try {
-    geo = await geocodeLocation(input.birthLocation);
+    geo =
+      input.latitude !== undefined && input.longitude !== undefined
+        ? { label: input.birthLocation, latitude: input.latitude, longitude: input.longitude }
+        : await geocodeLocation(input.birthLocation);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Could not resolve birth location";
     return NextResponse.json({ error: message }, { status: 422 });

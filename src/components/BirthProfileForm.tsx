@@ -5,6 +5,8 @@ import { fromZonedTime } from "date-fns-tz";
 import { BirthProfileDTO } from "@/types/api";
 import { apiFetch, ApiError } from "@/lib/client/api";
 import { adToBs, bsToAd } from "@/lib/nepaliDate";
+import { BsDatePicker } from "./BsDatePicker";
+import { CityDropdown, CityOption } from "./CityDropdown";
 import type { BirthSnapshot } from "@/lib/astrology/birthSnapshot";
 import { DiagramPlanet, planetBodyMarkup } from "@/lib/image/planetBodies";
 
@@ -17,6 +19,8 @@ export interface BirthProfileFormValues {
   birthDateBs: string;
   birthTimePeriod: "MORNING" | "DAY" | "EVENING" | "NIGHT";
   birthLocation: string;
+  /** Set when the location was picked from the city list; cleared on free-text edits. */
+  birthCoords: { latitude: number; longitude: number } | null;
   timezone: string;
   astrologySystem: "VEDIC";
   language: "EN" | "NE" | "FI";
@@ -68,6 +72,7 @@ function defaultsFrom(profile?: BirthProfileDTO | null): BirthProfileFormValues 
     birthDateBs: profile?.birthDate ? adToBs(profile.birthDate.slice(0, 10)) ?? "" : "",
     birthTimePeriod: periodFromTime(profile?.birthTime),
     birthLocation: profile?.birthLocation ?? "",
+    birthCoords: null,
     // The parent only renders this form once it already knows whether a
     // profile exists (see HomePage's `profile === undefined` loading gate),
     // so this never actually runs during the server-rendered pass -- safe
@@ -118,6 +123,16 @@ export function BirthProfileForm({
     });
   }
 
+  // A city from the list brings its own timezone and exact coordinates.
+  function selectCity(city: CityOption) {
+    setValues((v) => ({
+      ...v,
+      birthLocation: city.label,
+      birthCoords: { latitude: city.latitude, longitude: city.longitude },
+      timezone: city.timezone,
+    }));
+  }
+
   const snapshot = useBirthSnapshot(values.birthDate, PERIOD_TIMES[values.birthTimePeriod], values.timezone);
 
   function validate(): boolean {
@@ -144,6 +159,7 @@ export function BirthProfileForm({
           name: values.name,
           birthDate: values.birthDate,
           birthLocation: values.birthLocation,
+          ...(values.birthCoords ?? {}),
           timezone: values.timezone,
           astrologySystem: values.astrologySystem,
           language: values.language,
@@ -184,15 +200,18 @@ export function BirthProfileForm({
       </Field>
 
       <Field label="Date of birth (BS)" error={errors.birthDateBs}>
-        <input
-          type="text"
-          inputMode="numeric"
-          value={values.birthDateBs}
-          onChange={(e) => setBsDate(e.target.value.trim())}
-          placeholder="YYYY-MM-DD"
-          title="Bikram Sambat date, year-month-day, e.g. 2047-01-15"
-          className="input"
-        />
+        <div className="bs-field">
+          <input
+            type="text"
+            inputMode="numeric"
+            value={values.birthDateBs}
+            onChange={(e) => setBsDate(e.target.value.trim())}
+            placeholder="YYYY-MM-DD"
+            title="Bikram Sambat date, year-month-day, e.g. 2047-01-15"
+            className="input"
+          />
+          <BsDatePicker value={values.birthDateBs} onSelect={setBsDate} />
+        </div>
       </Field>
 
       <Field label="Time of birth" error={errors.birthTimePeriod}>
@@ -202,19 +221,20 @@ export function BirthProfileForm({
       </Field>
 
       <Field label="Birth location" error={errors.birthLocation}>
-        <input
-          type="text"
+        <CityDropdown
           value={values.birthLocation}
-          onChange={(e) => set("birthLocation", e.target.value)}
-          placeholder="City, Country"
-          className="input"
-          required
+          onChange={(text) => setValues((v) => ({ ...v, birthLocation: text, birthCoords: null }))}
+          onSelect={selectCity}
         />
       </Field>
 
       <Field label="Birth timezone" error={errors.timezone}>
         <select value={values.timezone} onChange={(e) => set("timezone", e.target.value)} className="input" required>
           {!values.timezone && <option value="">Select timezone</option>}
+          {/* A city's zone can be an IANA alias the browser's own list spells
+              differently (Asia/Kathmandu vs Chrome's Asia/Katmandu) -- keep it
+              selectable rather than showing a blank select. */}
+          {values.timezone && !TIMEZONES.includes(values.timezone) && <option value={values.timezone}>{values.timezone}</option>}
           {TIMEZONES.map((tz) => <option key={tz} value={tz}>{tz}</option>)}
         </select>
       </Field>
@@ -268,6 +288,51 @@ export function BirthProfileForm({
           font-weight: 600;
           cursor: default;
         }
+        :global(.city-dropdown) { position: relative; }
+        :global(.city-dropdown .input) { padding-right: 1.8rem; }
+        :global(.city-dropdown-caret) {
+          position: absolute; top: 50%; right: 0.7rem; transform: translateY(-50%);
+          font-size: 0.75rem; opacity: 0.7; pointer-events: none;
+        }
+        :global(.city-dropdown-list) {
+          position: absolute; top: calc(100% + 0.4rem); left: 0; z-index: 60;
+          width: max(100%, 16rem); max-height: 18rem; overflow-y: auto; padding: 0.3rem;
+          border-radius: 0.8rem; border: 1px solid var(--border);
+          background: #0b0f1c; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+        }
+        :global(.city-dropdown-option) {
+          display: flex; justify-content: space-between; gap: 0.75rem;
+          padding: 0.45rem 0.6rem; border-radius: 0.5rem; font-size: 0.82rem; cursor: pointer;
+        }
+        :global(.city-dropdown-option[aria-selected="true"]) { background: rgba(242, 166, 90, 0.18); }
+        :global(.city-dropdown-country) { color: #b8b2a4; font-size: 0.74rem; text-align: right; }
+        :global(.city-dropdown-empty) { padding: 0.5rem 0.6rem; font-size: 0.78rem; color: #b8b2a4; }
+        :global(.bs-field) { position: relative; }
+        :global(.bs-field .input) { padding-right: 2.2rem; }
+        :global(.bs-picker-toggle) {
+          position: absolute; top: 50%; right: 0.45rem; transform: translateY(-50%);
+          display: flex; padding: 0.25rem; border-radius: 0.4rem; color: var(--foreground); opacity: 0.8;
+        }
+        :global(.bs-picker-toggle:hover), :global(.bs-picker-toggle:focus-visible) { opacity: 1; background: rgba(255, 255, 255, 0.08); }
+        :global(.bs-picker-panel) {
+          position: absolute; top: calc(100% + 0.4rem); left: 0; z-index: 60; width: 17.5rem;
+          padding: 0.7rem; border-radius: 0.8rem; border: 1px solid var(--border);
+          background: #0b0f1c; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+        }
+        :global(.bs-picker-head) { display: flex; align-items: center; gap: 0.35rem; margin-bottom: 0.55rem; }
+        :global(.bs-picker-select) {
+          flex: 1; min-width: 0; border-radius: 0.5rem; border: 1px solid var(--border);
+          background: rgba(255, 255, 255, 0.05); color: var(--foreground); font-size: 0.8rem; padding: 0.3rem 0.4rem;
+        }
+        :global(.bs-picker-select option) { background: #0b0f1c; }
+        :global(.bs-picker-nav) { width: 1.8rem; height: 1.8rem; border-radius: 0.5rem; font-size: 1.1rem; color: var(--foreground); }
+        :global(.bs-picker-nav:hover:not(:disabled)) { background: rgba(255, 255, 255, 0.08); }
+        :global(.bs-picker-nav:disabled) { opacity: 0.3; }
+        :global(.bs-picker-grid) { display: grid; grid-template-columns: repeat(7, 1fr); gap: 0.2rem; text-align: center; }
+        :global(.bs-picker-weekday) { font-size: 0.68rem; color: #b8b2a4; padding-bottom: 0.2rem; }
+        :global(.bs-picker-day) { padding: 0.35rem 0; border-radius: 0.45rem; font-size: 0.8rem; color: var(--foreground); }
+        :global(.bs-picker-day:hover) { background: rgba(242, 166, 90, 0.18); }
+        :global(.bs-picker-day[aria-pressed="true"]) { background: var(--accent); color: #1a1208; font-weight: 700; }
         :global(.birth-chart-cell) { display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; }
         :global(.birth-chart-visual) {
           display: flex; align-items: center; justify-content: center;
