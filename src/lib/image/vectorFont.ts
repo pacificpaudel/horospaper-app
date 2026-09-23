@@ -77,6 +77,9 @@ const GLYPHS: Record<string, Glyph> = {
   "7": { width: 0.5, strokes: [[[0.02, 0], [0.48, 0], [0.16, 1]]] },
   "8": { width: 0.52, strokes: [arc(0.26, 0.26, 0.2, 0.24, 0, 360, 14), arc(0.26, 0.74, 0.22, 0.26, 0, 360, 14)] },
   "9": { width: 0.54, strokes: [[[0.14, 0.96], [0.36, 0.66], ...arc(0.26, 0.28, 0.24, 0.26, 20, 320, 14)]] },
+  // Parentheses mark retrograde planets in the kundli, e.g. "(SA)".
+  "(": { width: 0.26, strokes: [arc(0.3, 0.5, 0.2, 0.55, 125, 235, 10)] },
+  ")": { width: 0.26, strokes: [arc(-0.04, 0.5, 0.2, 0.55, -55, 55, 10)] },
   // Middle dot separator, e.g. "HOPEFUL · PROSPERITY".
   "·": { width: 0.24, strokes: [arc(0.12, 0.5, 0.05, 0.05, 0, 360, 8)] },
 };

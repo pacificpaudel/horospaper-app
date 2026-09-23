@@ -39,6 +39,7 @@ export async function POST(request: NextRequest) {
     name: input.name || null,
     birthDate: dateOnlyString(new Date(`${input.birthDate}T00:00:00Z`)),
     birthTime: input.birthTime,
+    birthTimeExact: input.birthTimeExact,
     birthLocation: geo.label,
     latitude: geo.latitude,
     longitude: geo.longitude,

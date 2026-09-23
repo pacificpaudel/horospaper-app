@@ -93,7 +93,7 @@ export interface GocharReading {
  * Meeus' low-order series -- well within a degree, which is plenty for a
  * whole-sign house count.
  */
-function meanRahuLongitude(date: Date): number {
+export function meanRahuLongitude(date: Date): number {
   const julianCenturies = (date.getTime() / 86400000 + 2440587.5 - 2451545.0) / 36525;
   return normalizeDegrees(125.04452 - 1934.136261 * julianCenturies);
 }

@@ -21,8 +21,10 @@ export interface MoonPhaseInfo {
 /**
  * Geocentric apparent tropical ecliptic longitude of a body at a given time,
  * referenced to the equinox of date (matches the classic tropical zodiac).
- * The Sun and Moon each need their own dedicated astronomy-engine call --
- * `EclipticLongitude` only supports the other planets.
+ * The Sun and Moon each have a dedicated astronomy-engine call; every other
+ * planet goes through its geocentric vector. (Not `EclipticLongitude` --
+ * that's *heliocentric*, as seen from the Sun: it put Mars up to ~180° off
+ * its place in the sky and could never show a retrograde.)
  */
 function eclipticLongitudeOf(planet: PlanetKey, date: Date): number {
   if (planet === "sun") {
@@ -32,7 +34,7 @@ function eclipticLongitudeOf(planet: PlanetKey, date: Date): number {
     return normalizeDegrees(Astronomy.EclipticGeoMoon(date).lon);
   }
   const body = PLANET_BODIES[planet];
-  return normalizeDegrees(Astronomy.EclipticLongitude(body, date));
+  return normalizeDegrees(Astronomy.Ecliptic(Astronomy.GeoVector(body, date, true)).elon);
 }
 
 function detectRetrograde(planet: PlanetKey, date: Date): boolean {

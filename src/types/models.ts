@@ -9,6 +9,8 @@ export interface BirthProfile {
   name: string | null;
   birthDate: string; // YYYY-MM-DD
   birthTime: string; // "HH:mm" local time at birth location
+  /** birthTime is the real clock time rather than a part-of-day midpoint; absent on older profiles. */
+  birthTimeExact?: boolean;
   birthLocation: string;
   latitude: number;
   longitude: number;

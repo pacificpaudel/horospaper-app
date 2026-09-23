@@ -7,6 +7,8 @@ import { generateHoroscope } from "@/lib/llm/generateHoroscope";
 import { HoroscopeSections } from "@/lib/llm/types";
 import { generateHoroscopeImage } from "@/lib/image/generateImage";
 import { buildDailyReading, DailyReading } from "@/lib/dailyReading";
+import { fetchKundli } from "@/lib/astrologyApi";
+import { kundliFromNatal } from "@/lib/image/kundliOverlay";
 import { BirthProfile } from "@/types/models";
 import { Horoscope } from "@/types/models";
 
@@ -103,6 +105,16 @@ export async function generateHoroscopeForUser(params: {
   }
   const sections: HoroscopeSections = textResult.value.sections;
   const dailyReading = reading.value;
+  // The birth chart for the wallpaper: freeastrologyapi.com's when it's
+  // reachable, else the app's own (identical) calculation.
+  dailyReading.kundli =
+    (await fetchKundli({
+      birthDate: profile.birthDate,
+      birthTime: profile.birthTime,
+      timezone: profile.timezone,
+      latitude: profile.latitude,
+      longitude: profile.longitude,
+    })) ?? kundliFromNatal(astrology.natalChart);
 
   const horoscopeId = randomUUID();
   let imageUrl: string | undefined;

@@ -13,6 +13,9 @@ export const BirthProfileInputSchema = z.object({
   name: z.string().trim().max(80).optional().or(z.literal("")),
   birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Birth date must be YYYY-MM-DD"),
   birthTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Birth time must be HH:mm"),
+  // True when birthTime is the actual clock time, false when it stands in
+  // for a part of the day (the form then sends that part's midpoint).
+  birthTimeExact: z.boolean().default(false),
   birthLocation: z.string().trim().min(2, "Birth location is required").max(200),
   // Sent when the location was picked from the city list, so it needn't be
   // geocoded; free-text locations omit them and are geocoded instead.

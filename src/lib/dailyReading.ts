@@ -8,6 +8,7 @@ import { getDailyRashifal } from "@/lib/rashifal";
 import { adToBs } from "@/lib/nepaliDate";
 import { resolveProvider } from "@/lib/llm/generateHoroscope";
 import { DailyIntent, isThemeTag, MoodTag, THEME_TAGS, ThemeTag } from "@/lib/image/dailyIntent";
+import type { KundliData } from "@/lib/astrologyApi";
 
 /**
  * Everything the wallpaper needs about "today" for one person: the luck
@@ -20,6 +21,8 @@ export interface DailyReading {
   luckScore: number;
   intent: DailyIntent;
   planetary: GocharReading;
+  /** The birth chart drawn above the luck meter (attached in horoscope.ts). */
+  kundli?: KundliData | null;
   rashifal: {
     bsDate: string;
     source: "hamropatro";

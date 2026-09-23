@@ -47,6 +47,16 @@ function percentMarkup(x: number, y: number, w: number, h: number, color: string
     <circle cx="${(x + w - r).toFixed(1)}" cy="${(y + h - r).toFixed(1)}" r="${r.toFixed(1)}" fill="none" stroke="${color}" stroke-width="${strokeW.toFixed(1)}" />`;
 }
 
+/** Top edge of the luck meter's backdrop panel -- other overlays stack above it. */
+export function luckMeterTop(width: number, height: number): number {
+  const minDim = Math.min(width, height);
+  const barHeight = Math.max(8, Math.round(minDim * 0.011));
+  const barY = height - Math.round(minDim * 0.065);
+  const digitH = barHeight * 3.4;
+  const digitY = barY - barHeight * 1.6 - digitH;
+  return digitY - digitH * 0.35;
+}
+
 /**
  * Draws the luck-meter progress bar with its percentage near the
  * bottom-center of a `width`x`height` canvas, so the downloaded wallpaper

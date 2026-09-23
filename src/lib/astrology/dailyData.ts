@@ -38,7 +38,8 @@ function computeDailyPlanetaryData(date: Date): DailyPlanetaryData {
  */
 export async function getDailyPlanetaryData(forDate: Date = new Date()): Promise<DailyPlanetaryData> {
   const day = dateOnlyUtc(forDate);
-  const key = `planetary:${dateOnlyString(day)}`;
+  // v2: positions before this were heliocentric for Mercury..Pluto (see ephemeris.ts).
+  const key = `planetary:v2:${dateOnlyString(day)}`;
 
   const cached = await redis.get<DailyPlanetaryData>(key);
   if (cached) return cached;

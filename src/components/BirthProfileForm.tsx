@@ -17,7 +17,10 @@ export interface BirthProfileFormValues {
   birthDate: string;
   /** Same day in Bikram Sambat, "YYYY-MM-DD" -- kept in sync with birthDate, never sent. */
   birthDateBs: string;
-  birthTimePeriod: "MORNING" | "DAY" | "EVENING" | "NIGHT";
+  /** "EXACT" when the clock time is known, else the part of the day. */
+  birthTimeMode: BirthTimeMode;
+  /** "HH:mm", used when birthTimeMode is "EXACT". */
+  birthTimeExact: string;
   birthLocation: string;
   /** Set when the location was picked from the city list; cleared on free-text edits. */
   birthCoords: { latitude: number; longitude: number } | null;
@@ -48,21 +51,39 @@ function listTimeZones(): string[] {
 
 const TIMEZONES = listTimeZones();
 
+// Parts of the day for when the exact birth time isn't known. All of them
+// fall on the entered birth date -- "Night" used to span 21:00-04:59 but
+// was calculated as 23:00 on the birth date, putting an after-midnight
+// birth ~21 hours (~11° of Moon travel) late.
 const BIRTH_TIME_PERIODS = [
-  { value: "MORNING", label: "Morning", detail: "5:00 – 11:59" },
-  { value: "DAY", label: "Day", detail: "12:00 – 16:59" },
-  { value: "EVENING", label: "Evening", detail: "17:00 – 20:59" },
-  { value: "NIGHT", label: "Night", detail: "21:00 – 4:59" },
+  { value: "MORNING", label: "Morning (5–12)", start: "05:00", end: "11:59", mid: "08:30" },
+  { value: "DAY", label: "Day (12–17)", start: "12:00", end: "16:59", mid: "14:30" },
+  { value: "EVENING", label: "Evening (17–21)", start: "17:00", end: "20:59", mid: "19:00" },
+  { value: "NIGHT", label: "Night (21–24)", start: "21:00", end: "23:59", mid: "22:30" },
+  { value: "LATE_NIGHT", label: "After midnight (0–5)", start: "00:00", end: "04:59", mid: "02:30" },
 ] as const;
 
-const PERIOD_TIMES = { MORNING: "09:00", DAY: "14:00", EVENING: "19:00", NIGHT: "23:00" } as const;
+type BirthPeriod = (typeof BIRTH_TIME_PERIODS)[number];
+type BirthTimeMode = "EXACT" | BirthPeriod["value"];
 
-function periodFromTime(time?: string): BirthProfileFormValues["birthTimePeriod"] {
+function periodFor(mode: BirthTimeMode): BirthPeriod | undefined {
+  return BIRTH_TIME_PERIODS.find((p) => p.value === mode);
+}
+
+function periodFromTime(time?: string): BirthPeriod["value"] {
   const hour = Number(time?.slice(0, 2));
   if (hour >= 5 && hour < 12) return "MORNING";
   if (hour >= 12 && hour < 17) return "DAY";
   if (hour >= 17 && hour < 21) return "EVENING";
-  return "NIGHT";
+  if (hour >= 21) return "NIGHT";
+  return "LATE_NIGHT";
+}
+
+/** Initial time fields: exact for new profiles, else whatever the profile saved. */
+function timeDefaults(profile?: BirthProfileDTO | null): Pick<BirthProfileFormValues, "birthTimeMode" | "birthTimeExact"> {
+  if (!profile) return { birthTimeMode: "EXACT", birthTimeExact: "" };
+  if (profile.birthTimeExact) return { birthTimeMode: "EXACT", birthTimeExact: profile.birthTime };
+  return { birthTimeMode: periodFromTime(profile.birthTime), birthTimeExact: "" };
 }
 
 function defaultsFrom(profile?: BirthProfileDTO | null): BirthProfileFormValues {
@@ -70,7 +91,7 @@ function defaultsFrom(profile?: BirthProfileDTO | null): BirthProfileFormValues 
     name: profile?.name ?? "",
     birthDate: profile?.birthDate?.slice(0, 10) ?? "",
     birthDateBs: profile?.birthDate ? adToBs(profile.birthDate.slice(0, 10)) ?? "" : "",
-    birthTimePeriod: periodFromTime(profile?.birthTime),
+    ...timeDefaults(profile),
     birthLocation: profile?.birthLocation ?? "",
     birthCoords: null,
     // The parent only renders this form once it already knows whether a
@@ -133,14 +154,23 @@ export function BirthProfileForm({
     }));
   }
 
-  const snapshot = useBirthSnapshot(values.birthDate, PERIOD_TIMES[values.birthTimePeriod], values.timezone);
+  const period = periodFor(values.birthTimeMode);
+  const birthTime = period ? period.mid : values.birthTimeExact;
+  const chart = useBirthSnapshot({
+    birthDate: values.birthDate,
+    birthTime,
+    window: period ? { start: period.start, end: period.end } : null,
+    timezone: values.timezone,
+    coords: values.birthCoords,
+    language: "ne",
+  });
 
   function validate(): boolean {
     const next: Record<string, string> = {};
     if (!values.birthDate) next.birthDate = "Date of birth is required";
     if (values.birthDateBs && !bsToAd(values.birthDateBs)) next.birthDateBs = "Not a valid BS date (2000-2090)";
     if (!values.timezone) next.timezone = "Timezone is required";
-    if (!values.birthTimePeriod) next.birthTimePeriod = "Time of birth is required";
+    if (values.birthTimeMode === "EXACT" && !values.birthTimeExact) next.birthTime = "Enter the time, or pick a part of the day";
     if (!values.birthLocation.trim()) next.birthLocation = "Birth location is required";
     setErrors(next);
     return Object.keys(next).length === 0;
@@ -164,7 +194,8 @@ export function BirthProfileForm({
           astrologySystem: values.astrologySystem,
           language: values.language,
           imageStyle: values.imageStyle,
-          birthTime: PERIOD_TIMES[values.birthTimePeriod],
+          birthTime,
+          birthTimeExact: values.birthTimeMode === "EXACT",
         }),
       });
       onSaved(profile);
@@ -214,10 +245,28 @@ export function BirthProfileForm({
         </div>
       </Field>
 
-      <Field label="Time of birth" error={errors.birthTimePeriod}>
-        <select value={values.birthTimePeriod} onChange={(e) => set("birthTimePeriod", e.target.value as BirthProfileFormValues["birthTimePeriod"])} className="input">
-          {BIRTH_TIME_PERIODS.map((period) => <option key={period.value} value={period.value}>{period.label}</option>)}
-        </select>
+      <Field label="Time of birth" error={errors.birthTime}>
+        <div className="birth-time">
+          <select
+            value={values.birthTimeMode}
+            onChange={(e) => set("birthTimeMode", e.target.value as BirthTimeMode)}
+            className="input"
+            aria-label="How precisely you know your birth time"
+          >
+            <option value="EXACT">Exact time</option>
+            {BIRTH_TIME_PERIODS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+          </select>
+          {values.birthTimeMode === "EXACT" && (
+            <input
+              type="time"
+              value={values.birthTimeExact}
+              onChange={(e) => set("birthTimeExact", e.target.value)}
+              className="input"
+              aria-label="Exact time of birth"
+              required
+            />
+          )}
+        </div>
       </Field>
 
       <Field label="Birth location" error={errors.birthLocation}>
@@ -250,7 +299,7 @@ export function BirthProfileForm({
         {submitting ? "Making..." : submitLabel}
       </button>
 
-      {snapshot && <BirthChartPanel snapshot={snapshot} />}
+      {chart && <BirthChartPanel chart={chart} />}
 
       {serverError && <p className="birth-error text-sm text-red-400">{serverError}</p>}
 
@@ -288,6 +337,8 @@ export function BirthProfileForm({
           font-weight: 600;
           cursor: default;
         }
+        :global(.birth-time) { display: flex; flex-direction: column; gap: 0.35rem; }
+        :global(.birth-chart-warning) { grid-column: 1 / -1; font-size: 0.78rem; color: #f7c56a; }
         :global(.city-dropdown) { position: relative; }
         :global(.city-dropdown .input) { padding-right: 1.8rem; }
         :global(.city-dropdown-caret) {
@@ -336,8 +387,13 @@ export function BirthProfileForm({
         :global(.birth-chart-cell) { display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; }
         :global(.birth-chart-visual) {
           display: flex; align-items: center; justify-content: center;
-          height: 4.5rem; border-radius: 0.65rem; background: #080b16;
+          flex: 1; min-height: 4.5rem; padding: 0.5rem; border-radius: 0.65rem; background: #080b16;
         }
+        :global(.birth-chart-kundli) { display: flex; align-items: flex-start; gap: 0.5rem; width: 100%; justify-content: center; }
+        :global(.birth-chart-kundli img) { width: min(100%, 12rem); aspect-ratio: 1; display: block; border-radius: 0.4rem; }
+        :global(.birth-chart-sign-badge) { font-size: 1.6rem; }
+        :global(.birth-chart-dasha) { grid-column: 1 / -1; font-size: 0.82rem; color: #fdf6e6; }
+        :global(.birth-chart-dasha strong) { color: #f7c56a; }
         :global(.birth-chart-planet) { width: 4rem; height: 4rem; }
         :global(.birth-chart-sign) { font-size: 2.6rem; line-height: 1; color: #f7c56a; }
         :global(.birth-chart-note) { grid-column: 1 / -1; font-size: 0.72rem; color: #b8b2a4; }
@@ -364,28 +420,105 @@ export function BirthProfileForm({
   );
 }
 
+interface BirthChartView {
+  snapshot: BirthSnapshot;
+  /** Every rashi possible across the chosen part of the day (1 = certain). */
+  possibleRashis: string[];
+  source: "freeastrologyapi" | "local";
+  /** Kundli chart SVG from the API (shown as an image), when available. */
+  chartSvg: string | null;
+  mahadasha: { lord: string; start: string; end: string } | null;
+}
+
+interface ApiChart {
+  rashi: { name: string; nepali: string; sign: string };
+  moon: string;
+  moonNakshatra: string;
+  saturn: string;
+  mars: string;
+  chartSvg: string | null;
+  mahadasha: { lord: string; start: string; end: string } | null;
+}
+
 /**
- * The natal Moon/Saturn/Mars placements and rashi for the entered birth
- * details, computed in the browser. astronomy-engine is loaded lazily so it
- * stays out of the page's initial bundle.
+ * The rashi and Moon/Saturn/Mars placements for the entered birth details.
+ * Shown instantly from the local calculation (astronomy-engine, loaded
+ * lazily to keep it out of the initial bundle), then replaced by
+ * freeastrologyapi.com's answer once it arrives -- the two agree to within
+ * a few hundredths of a degree, so the swap is rarely visible.
  */
-function useBirthSnapshot(birthDate: string, birthTime: string, timezone: string): BirthSnapshot | null {
-  const [snapshot, setSnapshot] = useState<BirthSnapshot | null>(null);
-  const valid = /^\d{4}-\d{2}-\d{2}$/.test(birthDate) && Boolean(timezone);
+function useBirthSnapshot({
+  birthDate,
+  birthTime,
+  window,
+  timezone,
+  coords,
+  language,
+}: {
+  birthDate: string;
+  birthTime: string;
+  window: { start: string; end: string } | null;
+  timezone: string;
+  coords: { latitude: number; longitude: number } | null;
+  language: "ne";
+}): BirthChartView | null {
+  const [view, setView] = useState<BirthChartView | null>(null);
+  const valid = /^\d{4}-\d{2}-\d{2}$/.test(birthDate) && /^\d{2}:\d{2}$/.test(birthTime) && Boolean(timezone);
+  const windowStart = window?.start;
+  const windowEnd = window?.end;
+  const latitude = coords?.latitude;
+  const longitude = coords?.longitude;
+
   useEffect(() => {
     if (!valid) return;
     let cancelled = false;
+    let apiTimer: ReturnType<typeof setTimeout> | undefined;
     import("@/lib/astrology/birthSnapshot")
-      .then(({ computeBirthSnapshot }) => {
-        const birthUtc = fromZonedTime(`${birthDate}T${birthTime}:00`, timezone);
-        if (!cancelled && !Number.isNaN(birthUtc.getTime())) setSnapshot(computeBirthSnapshot(birthUtc));
+      .then(({ computeBirthSnapshot, rashisBetween, symbolForSign }) => {
+        const toUtc = (time: string) => fromZonedTime(`${birthDate}T${time}:00`, timezone);
+        const birthUtc = toUtc(birthTime);
+        if (cancelled || Number.isNaN(birthUtc.getTime())) return;
+        const local = computeBirthSnapshot(birthUtc);
+        const possibleRashis =
+          windowStart && windowEnd ? rashisBetween(toUtc(windowStart), toUtc(windowEnd)).map((r) => r.name) : [local.rashi.name];
+        setView({ snapshot: local, possibleRashis, source: "local", chartSvg: null, mahadasha: null });
+
+        // Debounced: the API's free plan allows 50 calls a day, so only ask
+        // once the user has stopped editing.
+        apiTimer = setTimeout(() => {
+          apiFetch<{ chart: ApiChart | null }>("/api/birth-chart", {
+            method: "POST",
+            body: JSON.stringify({ birthDate, birthTime, timezone, latitude, longitude, language }),
+          })
+            .then(({ chart }) => {
+              if (cancelled || !chart) return;
+              setView({
+                snapshot: {
+                  ...local,
+                  rashi: { ...local.rashi, ...chart.rashi, sign: chart.rashi.sign as BirthSnapshot["rashi"]["sign"] },
+                  rashiSymbol: symbolForSign(chart.rashi.sign),
+                  moon: chart.moon,
+                  moonNakshatra: chart.moonNakshatra,
+                  saturn: chart.saturn,
+                  mars: chart.mars,
+                },
+                possibleRashis,
+                source: "freeastrologyapi",
+                chartSvg: chart.chartSvg,
+                mahadasha: chart.mahadasha,
+              });
+            })
+            .catch(() => {});
+        }, 700);
       })
       .catch(() => {});
     return () => {
       cancelled = true;
+      clearTimeout(apiTimer);
     };
-  }, [valid, birthDate, birthTime, timezone]);
-  return valid ? snapshot : null;
+  }, [valid, birthDate, birthTime, windowStart, windowEnd, timezone, latitude, longitude, language]);
+
+  return valid ? view : null;
 }
 
 /** The same stylized body the wallpaper's corner diagrams draw, as a standalone icon. */
@@ -395,13 +528,26 @@ function PlanetImage({ planet, moonIllumination = 0.5 }: { planet: DiagramPlanet
   return <svg viewBox="-40 -40 80 80" className="birth-chart-planet" aria-hidden="true" dangerouslySetInnerHTML={{ __html: markup }} />;
 }
 
-function BirthChartPanel({ snapshot }: { snapshot: BirthSnapshot }) {
+function BirthChartPanel({ chart }: { chart: BirthChartView }) {
+  const { snapshot, possibleRashis } = chart;
   const rows = [
     {
       label: "Horoscope sign (rashi)",
       value: `${snapshot.rashi.name} · ${snapshot.rashi.nepali} (${snapshot.rashi.sign})`,
       // U+FE0E asks for the plain text glyph rather than a colored emoji.
-      visual: <span className="birth-chart-sign" aria-hidden="true">{snapshot.rashiSymbol}{"\uFE0E"}</span>,
+      visual: chart.chartSvg ? (
+        <div className="birth-chart-kundli">
+          {/* An <img> (not inline markup) so a third-party SVG can never run script in the page. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(chart.chartSvg)}`}
+            alt={`Birth chart (kundli), North Indian style, Moon in ${snapshot.rashi.sign}`}
+          />
+          <span className="birth-chart-sign birth-chart-sign-badge" aria-hidden="true">{snapshot.rashiSymbol}{"\uFE0E"}</span>
+        </div>
+      ) : (
+        <span className="birth-chart-sign" aria-hidden="true">{snapshot.rashiSymbol}{"\uFE0E"}</span>
+      ),
     },
     {
       label: "Moon at birth",
@@ -421,7 +567,19 @@ function BirthChartPanel({ snapshot }: { snapshot: BirthSnapshot }) {
           <div className="birth-chart-visual">{row.visual}</div>
         </div>
       ))}
-      <p className="birth-chart-note">Vedic (sidereal, Lahiri) positions. Birth time is taken from the chosen part of the day, so the Moon may be off by a few degrees.</p>
+      {chart.mahadasha && (
+        <p className="birth-chart-dasha">
+          Current Mahadasha: <strong>{chart.mahadasha.lord}</strong> ({chart.mahadasha.start.slice(0, 4)}–{chart.mahadasha.end.slice(0, 4)})
+        </p>
+      )}
+      {possibleRashis.length > 1 && (
+        <p className="birth-chart-warning" role="status">
+          Depending on your exact birth time, your rashi is {possibleRashis.join(" or ")} -- choose &quot;Exact time&quot; to be sure.
+        </p>
+      )}
+      <p className="birth-chart-note">
+        Vedic (sidereal, Lahiri) positions{chart.source === "freeastrologyapi" ? " from freeastrologyapi.com" : ", calculated in your browser"}.
+      </p>
     </div>
   );
 }

@@ -19,8 +19,11 @@ export function computeAscendantLongitude(date: Date, latitude: number, longitud
   const lat = latitude * DEG2RAD;
   const obl = obliquityDeg * DEG2RAD;
 
-  const y = -Math.cos(ramc);
-  const x = Math.sin(ramc) * Math.cos(obl) + Math.tan(lat) * Math.sin(obl);
+  // atan2(cos RAMC, -(sin RAMC cos e + tan lat sin e)). Negating *both*
+  // arguments -- as this once did -- rotates the result by 180° and yields
+  // the Descendant instead of the Ascendant.
+  const y = Math.cos(ramc);
+  const x = -(Math.sin(ramc) * Math.cos(obl) + Math.tan(lat) * Math.sin(obl));
   const ascRad = Math.atan2(y, x);
 
   return normalizeDegrees(ascRad * RAD2DEG);

@@ -5,6 +5,7 @@ export interface BirthProfileDTO {
   name: string | null;
   birthDate: string;
   birthTime: string;
+  birthTimeExact?: boolean;
   birthLocation: string;
   latitude: number;
   longitude: number;
