@@ -6,7 +6,7 @@ import { dateOnlyString } from "@/lib/astrology/dailyData";
 import { generateHoroscope } from "@/lib/llm/generateHoroscope";
 import { HoroscopeSections } from "@/lib/llm/types";
 import { generateHoroscopeImage } from "@/lib/image/generateImage";
-import { buildDailyAstrologyKey, calculateLuckScore } from "@/lib/luckScore";
+import { buildDailyReading, DailyReading } from "@/lib/dailyReading";
 import { BirthProfile } from "@/types/models";
 import { Horoscope } from "@/types/models";
 
@@ -18,6 +18,19 @@ export class HoroscopeGenerationError extends Error {
 
 function birthDateTimeToUtc(profile: BirthProfile): Date {
   return fromZonedTime(`${profile.birthDate}T${profile.birthTime}:00`, profile.timezone);
+}
+
+/**
+ * Stable key for artwork within one astrology date: same chart, same day,
+ * same 2 tags -> same picked image across passive reloads.
+ */
+function buildDailyAstrologyKey(astrology: StructuredAstrologyData, reading: DailyReading): string {
+  const natalKey = Object.values(astrology.natalChart.planets)
+    .map((planet) => `${planet.planet}:${planet.longitude.toFixed(3)}`)
+    .join("|");
+  const placeKey = `${astrology.natalChart.latitude.toFixed(3)},${astrology.natalChart.longitude.toFixed(3)}`;
+  const ascendantKey = astrology.natalChart.ascendant?.longitude.toFixed(3) ?? "none";
+  return `${astrology.system}:${astrology.generationDate}:${placeKey}:${ascendantKey}:${natalKey}:${reading.intent.mood}:${reading.intent.theme}`;
 }
 
 function horoscopeKey(userId: string, day: string, isPreview: boolean): string {
@@ -74,14 +87,22 @@ export async function generateHoroscopeForUser(params: {
     throw new HoroscopeGenerationError("astrology", "We couldn't calculate today's chart. Please try again.");
   }
 
-  let sections: HoroscopeSections;
-  try {
-    const result = await generateHoroscope(astrology, { name: profile.name, language: profile.language });
-    sections = result.sections;
-  } catch (err) {
-    logGenerationError(userId, "llm", err);
+  // Independent of each other, so they run side by side: the horoscope
+  // text, and the day's luck + 2 tags (planetary gochar + Nepali rashifal).
+  const [textResult, reading] = await Promise.allSettled([
+    generateHoroscope(astrology, { name: profile.name, language: profile.language }),
+    buildDailyReading(astrology, forDate),
+  ]);
+  if (textResult.status === "rejected") {
+    logGenerationError(userId, "llm", textResult.reason);
     throw new HoroscopeGenerationError("llm", "We couldn't write today's horoscope. Please try again.");
   }
+  if (reading.status === "rejected") {
+    logGenerationError(userId, "astrology", reading.reason);
+    throw new HoroscopeGenerationError("astrology", "We couldn't read today's chart. Please try again.");
+  }
+  const sections: HoroscopeSections = textResult.value.sections;
+  const dailyReading = reading.value;
 
   const horoscopeId = randomUUID();
   let imageUrl: string | undefined;
@@ -94,12 +115,13 @@ export async function generateHoroscopeForUser(params: {
     // but an explicit user-requested regeneration should actually produce
     // different art -- mixing in this call's own horoscopeId gives it fresh
     // entropy without touching the deterministic astrology data/luck score.
-    const imageSeed = regenerateArt ? `${buildDailyAstrologyKey(astrology)}:${horoscopeId}` : buildDailyAstrologyKey(astrology);
+    const baseSeed = buildDailyAstrologyKey(astrology, dailyReading);
+    const imageSeed = regenerateArt ? `${baseSeed}:${horoscopeId}` : baseSeed;
     const image = await generateHoroscopeImage({
       horoscopeId,
       stableSeed: imageSeed,
       astrology,
-      luckScore: calculateLuckScore(astrology),
+      reading: dailyReading,
       style: profile.imageStyle,
       luckyTheme: sections.luckyTheme,
       emotionalTheme: sections.overall,
@@ -120,6 +142,7 @@ export async function generateHoroscopeForUser(params: {
     userId,
     generationDate: day,
     astrologyData: astrology,
+    dailyReading,
     horoscopeText: sections,
     imageUrl: imageUrl ?? null,
     imageUrlMobile: imageUrlMobile ?? null,

@@ -2,7 +2,8 @@ import { StructuredAstrologyData } from "@/lib/astrology";
 import { buildPlanetDiagramsMarkup } from "./planetDiagram";
 import { buildLuckMeterMarkup } from "./luckMeterOverlay";
 import { buildDateHeaderMarkup } from "./dateHeaderOverlay";
-import { deriveDailyIntent } from "./dailyIntent";
+import { buildGalaxyMarkup } from "./galaxyOverlay";
+import { DailyReading } from "@/lib/dailyReading";
 
 export interface TargetCanvas {
   width: number;
@@ -22,7 +23,7 @@ export interface TargetCanvas {
 export async function withWallpaperOverlay(
   image: Buffer,
   astrology: StructuredAstrologyData,
-  luckScore: number,
+  reading: DailyReading,
   target?: TargetCanvas,
   flushPlanets = false
 ): Promise<Buffer> {
@@ -41,6 +42,6 @@ export async function withWallpaperOverlay(
     height = metadata.height ?? 1350;
   }
 
-  const overlay = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${buildPlanetDiagramsMarkup(astrology, width, height, flushPlanets)}${buildDateHeaderMarkup(width, height, astrology.generationDate, deriveDailyIntent(astrology))}${buildLuckMeterMarkup(width, height, luckScore)}</svg>`;
+  const overlay = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${buildPlanetDiagramsMarkup(astrology, width, height, flushPlanets)}${buildGalaxyMarkup(width, height, astrology.generationDate)}${buildDateHeaderMarkup(width, height, astrology.generationDate, reading.intent)}${buildLuckMeterMarkup(width, height, reading.luckScore)}</svg>`;
   return base.composite([{ input: Buffer.from(overlay), top: 0, left: 0 }]).toBuffer();
 }

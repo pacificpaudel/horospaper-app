@@ -61,11 +61,18 @@ export interface StructuredAstrologyDataDTO {
   transits: TransitAspectDTO[];
 }
 
+export interface DailyReadingDTO {
+  rashi: { name: string; nepali: string; sign: string };
+  luckScore: number;
+  intent: { mood: string; theme: string };
+}
+
 export interface HoroscopeDTO {
   id: string;
   userId: string;
   generationDate: string;
   astrologyData: StructuredAstrologyDataDTO;
+  dailyReading: DailyReadingDTO;
   horoscopeText: HoroscopeSectionsDTO;
   imageUrl: string | null;
   imageUrlMobile: string | null;

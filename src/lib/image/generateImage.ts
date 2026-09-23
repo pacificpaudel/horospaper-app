@@ -3,12 +3,12 @@ import { StructuredAstrologyData } from "@/lib/astrology";
 import { saveGeneratedFile } from "@/lib/storage";
 import { buildImagePrompt } from "./prompt";
 import { generateMockHoroscopeImageSvg } from "./mockImage";
-import { deriveDailyIntent } from "./dailyIntent";
+import { DailyReading } from "@/lib/dailyReading";
 import { generateOpenverseImage } from "./openverseImage";
 import { withWallpaperOverlay, TargetCanvas } from "./compositeOverlay";
 import { createHash } from "node:crypto";
 
-const IMAGE_GENERATOR_VERSION = "daily-image-v10";
+const IMAGE_GENERATOR_VERSION = "daily-image-v11";
 
 // Source images (a random-aspect-ratio Openverse photo, OpenAI's fixed
 // portrait size, or the mock SVG's native 4:5) rarely match either wallpaper
@@ -62,14 +62,14 @@ export async function generateHoroscopeImage(params: {
   horoscopeId: string;
   stableSeed: string;
   astrology: StructuredAstrologyData;
-  luckScore: number;
+  reading: DailyReading;
   style: ImageStyle;
   luckyTheme: string;
   emotionalTheme: string;
   desktopRatio?: number;
   randomizeArt?: boolean;
 }): Promise<GeneratedImage> {
-  const { stableSeed, astrology, luckScore, style, luckyTheme, emotionalTheme, desktopRatio, randomizeArt } = params;
+  const { stableSeed, astrology, reading, style, luckyTheme, emotionalTheme, desktopRatio, randomizeArt } = params;
   const DESKTOP_TARGET = desktopTargetFor(desktopRatio);
   const assetId = createHash("sha256").update(stableSeed).digest("hex").slice(0, 24);
   const prompt = buildImagePrompt(astrology, { style, luckyTheme, emotionalTheme });
@@ -80,9 +80,9 @@ export async function generateHoroscopeImage(params: {
       const { generateWithOpenAIImage } = await import("./openaiImage");
       const buffer = await generateWithOpenAIImage(prompt);
       const [desktop, mobile, frame] = await Promise.all([
-        withWallpaperOverlay(buffer, astrology, luckScore, DESKTOP_TARGET),
-        withWallpaperOverlay(buffer, astrology, luckScore, MOBILE_TARGET),
-        withWallpaperOverlay(buffer, astrology, luckScore, FRAME_TARGET, true),
+        withWallpaperOverlay(buffer, astrology, reading, DESKTOP_TARGET),
+        withWallpaperOverlay(buffer, astrology, reading, MOBILE_TARGET),
+        withWallpaperOverlay(buffer, astrology, reading, FRAME_TARGET, true),
       ]);
       const [{ url }, { url: mobileUrl }, { url: frameUrl }] = await Promise.all([
         saveGeneratedFile(`${assetId}-${IMAGE_GENERATOR_VERSION}.png`, desktop, "image/png"),
@@ -96,11 +96,11 @@ export async function generateHoroscopeImage(params: {
   }
 
   try {
-    const result = await generateOpenverseImage({ stableSeed, intent: deriveDailyIntent(astrology), randomize: randomizeArt });
+    const result = await generateOpenverseImage({ stableSeed, intent: reading.intent, randomize: randomizeArt });
     const [desktop, mobile, frame] = await Promise.all([
-      withWallpaperOverlay(result.buffer, astrology, luckScore, DESKTOP_TARGET),
-      withWallpaperOverlay(result.buffer, astrology, luckScore, MOBILE_TARGET),
-      withWallpaperOverlay(result.buffer, astrology, luckScore, FRAME_TARGET, true),
+      withWallpaperOverlay(result.buffer, astrology, reading, DESKTOP_TARGET),
+      withWallpaperOverlay(result.buffer, astrology, reading, MOBILE_TARGET),
+      withWallpaperOverlay(result.buffer, astrology, reading, FRAME_TARGET, true),
     ]);
     const [{ url }, { url: mobileUrl }, { url: frameUrl }] = await Promise.all([
       saveGeneratedFile(`${assetId}-${IMAGE_GENERATOR_VERSION}.${result.extension}`, desktop, result.contentType),
@@ -115,7 +115,8 @@ export async function generateHoroscopeImage(params: {
   const svgOpts = {
     seed: stableSeed,
     style,
-    luckScore,
+    luckScore: reading.luckScore,
+    intent: reading.intent,
     astrology,
     luckyTheme,
     emotionalTheme,

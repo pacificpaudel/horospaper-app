@@ -9,26 +9,34 @@ function extractJson(text: string): Record<string, string> {
   return JSON.parse(match[0]);
 }
 
-export async function generateWithAnthropic(prompt: string): Promise<HoroscopeSections> {
+async function completeWithAnthropic(prompt: string, maxTokens: number): Promise<string> {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
   const response = await client.messages.create({
     model: "claude-opus-5",
-    max_tokens: 2000,
+    max_tokens: maxTokens,
     output_config: { effort: "low" },
     messages: [{ role: "user", content: prompt }],
   });
 
   if (response.stop_reason === "refusal") {
-    throw new Error("Horoscope generation was declined by the model");
+    throw new Error("Request was declined by the model");
   }
 
   const textBlock = response.content.find((b) => b.type === "text");
   if (!textBlock || textBlock.type !== "text") {
     throw new Error("No text content returned from Anthropic");
   }
+  return textBlock.text;
+}
 
-  const parsed = extractJson(textBlock.text);
+/** One prompt in, one parsed JSON object out -- callers validate the shape. */
+export async function generateJsonWithAnthropic(prompt: string): Promise<unknown> {
+  return extractJson(await completeWithAnthropic(prompt, 1000));
+}
+
+export async function generateWithAnthropic(prompt: string): Promise<HoroscopeSections> {
+  const parsed = extractJson(await completeWithAnthropic(prompt, 2000));
   return {
     overall: parsed.overall,
     love: parsed.love,

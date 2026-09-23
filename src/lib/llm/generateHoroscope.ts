@@ -4,9 +4,9 @@ import { buildHoroscopePrompt } from "./prompt";
 import { generateMockHoroscope } from "./mockProvider";
 import { HoroscopeSections } from "./types";
 
-type Provider = "anthropic" | "openai" | "mock";
+export type Provider = "anthropic" | "openai" | "mock";
 
-function resolveProvider(): Provider {
+export function resolveProvider(): Provider {
   const configured = (process.env.LLM_PROVIDER || "").toLowerCase();
   if (configured === "anthropic" && process.env.ANTHROPIC_API_KEY) return "anthropic";
   if (configured === "openai" && process.env.OPENAI_API_KEY) return "openai";

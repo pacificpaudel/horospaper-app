@@ -1,31 +1,61 @@
-import { StructuredAstrologyData } from "@/lib/astrology";
-import { calculateLuckScore } from "@/lib/luckScore";
+// The day's 2 tags: a mood (how the day feels, from the combined luck
+// reading) and a theme (what it's about, from the day's rashifal or the
+// Moon's transit house). Both come from fixed vocabularies so every tag
+// has a hand-picked, visually searchable Openverse phrase -- free-form
+// words (or the old always-"joyful sunlit" pair) tend to return tiny or
+// off-theme image pools.
+
+export const MOOD_TAGS = {
+  radiant: "radiant golden light",
+  joyful: "joyful celebration colors",
+  hopeful: "hopeful sunrise",
+  serene: "serene calm lake",
+  steady: "mountain landscape calm",
+  determined: "determined climber summit",
+  cautious: "misty forest path",
+  reflective: "quiet reflection water",
+  restless: "stormy sea waves",
+} as const;
+
+export const THEME_TAGS = {
+  prosperity: "golden harvest abundance",
+  enterprise: "busy market trade",
+  career: "city skyline ambition",
+  connection: "love togetherness",
+  friendship: "friends laughter",
+  family: "family home warmth",
+  creativity: "colorful painting creativity",
+  learning: "books library learning",
+  journey: "journey open road",
+  courage: "courage brave horse",
+  vitality: "vitality green nature",
+  rest: "rest peaceful nature",
+  devotion: "temple spiritual light",
+  patience: "patience still water stones",
+  transformation: "butterfly transformation",
+} as const;
+
+export type MoodTag = keyof typeof MOOD_TAGS;
+export type ThemeTag = keyof typeof THEME_TAGS;
 
 export interface DailyIntent {
-  keywords: [string, string, string, string];
-  mood: "joyful" | "reflective" | "tender" | "resilient";
+  mood: MoodTag;
+  theme: ThemeTag;
 }
 
-export function deriveDailyIntent(astrology: StructuredAstrologyData): DailyIntent {
-  const luck = calculateLuckScore(astrology);
-  const harmonious = astrology.transits.filter((transit) => transit.nature === "harmonious").length;
-  const challenging = astrology.transits.filter((transit) => transit.nature === "challenging").length;
-  const mood = luck >= 72 ? "joyful" : luck >= 52 ? "reflective" : luck >= 34 ? "tender" : "resilient";
-  const light = astrology.today.moonIllumination >= 0.65 ? "sunlit" : astrology.today.moonIllumination >= 0.35 ? "soft light" : "twilight";
-  const movement = harmonious > challenging ? "open movement" : challenging > harmonious ? "quiet pause" : "stillness";
-  const reflection = `${astrology.today.moonPhaseName.toLowerCase()} reflection`;
-
-  return {
-    keywords: [mood, light, movement, reflection],
-    mood,
-  };
+export function isMoodTag(value: unknown): value is MoodTag {
+  return typeof value === "string" && value in MOOD_TAGS;
 }
 
-// Searching Openverse on all 4 keyword phrases at once (mood + light +
-// movement + reflection, several words each) over-constrains the query and
-// tends to return sparse or off-theme results. Mood and light alone are the
-// most visually concrete of the four and searchable on their own.
-export function dailyIntentQuery(intent: DailyIntent): string {
-  const [mood, light] = intent.keywords;
-  return `${mood} ${light} human emotion reflection fine art mixed media`;
+export function isThemeTag(value: unknown): value is ThemeTag {
+  return typeof value === "string" && value in THEME_TAGS;
+}
+
+/** Most specific first; the last entry is a guaranteed-broad fallback. */
+export function dailyIntentQueries(intent: DailyIntent): string[] {
+  return [
+    `${MOOD_TAGS[intent.mood]} ${THEME_TAGS[intent.theme]} art`,
+    `${THEME_TAGS[intent.theme]} art`,
+    `${intent.mood} art`,
+  ];
 }

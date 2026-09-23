@@ -8,7 +8,7 @@ function extractJson(text: string): Record<string, string> {
   return JSON.parse(match[0]);
 }
 
-export async function generateWithOpenAI(prompt: string): Promise<HoroscopeSections> {
+async function completeWithOpenAI(prompt: string, temperature: number): Promise<string> {
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -18,7 +18,7 @@ export async function generateWithOpenAI(prompt: string): Promise<HoroscopeSecti
     body: JSON.stringify({
       model: "gpt-4o-mini",
       messages: [{ role: "user", content: prompt }],
-      temperature: 0.8,
+      temperature,
     }),
   });
 
@@ -30,8 +30,16 @@ export async function generateWithOpenAI(prompt: string): Promise<HoroscopeSecti
   const data = (await res.json()) as {
     choices: { message: { content: string } }[];
   };
-  const text = data.choices[0]?.message?.content ?? "";
-  const parsed = extractJson(text);
+  return data.choices[0]?.message?.content ?? "";
+}
+
+/** One prompt in, one parsed JSON object out -- callers validate the shape. */
+export async function generateJsonWithOpenAI(prompt: string): Promise<unknown> {
+  return extractJson(await completeWithOpenAI(prompt, 0.2));
+}
+
+export async function generateWithOpenAI(prompt: string): Promise<HoroscopeSections> {
+  const parsed = extractJson(await completeWithOpenAI(prompt, 0.8));
 
   return {
     overall: parsed.overall,

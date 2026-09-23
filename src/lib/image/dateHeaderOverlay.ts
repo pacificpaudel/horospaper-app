@@ -98,7 +98,7 @@ export function buildDateHeaderMarkup(width: number, height: number, generationD
   ];
 
   if (intent) {
-    const intentText = `${intent.keywords[0]} ${intent.keywords[1]}`.toUpperCase();
+    const intentText = `${intent.mood} · ${intent.theme}`.toUpperCase();
     const intentStyle: TextStyle = { ...dateStyle, color: "#f7c56a" };
     const intentSize = fitSize(intentText, dateSize, safeWidth, intentStyle);
     const intentY = backdropBottom + Math.round(intentSize * 1.4);

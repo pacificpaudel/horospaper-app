@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-function isValidTimeZone(timezone: string): boolean {
+export function isValidTimeZone(timezone: string): boolean {
   try {
     Intl.DateTimeFormat(undefined, { timeZone: timezone });
     return true;

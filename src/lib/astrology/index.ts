@@ -3,6 +3,8 @@ import { PLANET_LABELS, PlanetKey } from "./constants";
 import { getDailyPlanetaryData } from "./dailyData";
 import { computeNatalChart, NatalChart } from "./natalChart";
 import { computeTransits, TransitAspect } from "./transits";
+import { PlanetPosition } from "./ephemeris";
+import { longitudeToSign, tropicalToSidereal } from "./zodiac";
 
 export * from "./constants";
 export * from "./zodiac";
@@ -49,7 +51,15 @@ export async function buildStructuredAstrologyData(params: {
 
   const natalChart = computeNatalChart(birthDateTimeUtc, latitude, longitude, system);
   const daily = await getDailyPlanetaryData(forDate);
-  const transits = computeTransits(daily.planets, natalChart);
+  // Today's ephemeris is tropical; a Vedic natal chart is sidereal. Compare
+  // like with like, otherwise every aspect is off by the ~24° ayanamsa.
+  const transitPlanets =
+    system === "VEDIC"
+      ? (Object.fromEntries(
+          Object.entries(daily.planets).map(([key, pos]) => [key, { ...pos, ...longitudeToSign(tropicalToSidereal(pos.longitude, forDate)) }])
+        ) as Record<PlanetKey, PlanetPosition>)
+      : daily.planets;
+  const transits = computeTransits(transitPlanets, natalChart);
 
   return {
     generationDate: daily.date,

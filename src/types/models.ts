@@ -1,6 +1,7 @@
 import { AstrologySystem, ImageStyle, Language } from "./enums";
 import { StructuredAstrologyData } from "@/lib/astrology";
 import { HoroscopeSections } from "@/lib/llm/types";
+import type { DailyReading } from "@/lib/dailyReading";
 
 export interface BirthProfile {
   id: string;
@@ -24,6 +25,8 @@ export interface Horoscope {
   userId: string;
   generationDate: string; // YYYY-MM-DD
   astrologyData: StructuredAstrologyData;
+  /** Luck % + the day's 2 tags; absent on horoscopes stored before it existed. */
+  dailyReading?: DailyReading;
   horoscopeText: HoroscopeSections;
   imageUrl: string | null;
   imageUrlMobile: string | null;

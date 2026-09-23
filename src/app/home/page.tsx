@@ -11,7 +11,6 @@ import { CrystalBallScene } from "@/components/CrystalBallScene";
 import { ensureGuestId } from "@/lib/client/guest";
 import { apiFetch, ApiError } from "@/lib/client/api";
 import { BirthProfileDTO, HoroscopeDTO } from "@/types/api";
-import { calculateLuckScore } from "@/lib/luckScore";
 
 // Header (5rem) + footer (4rem) chrome subtracted from the viewport height,
 // and the output canvas's own max-w-6xl + padding subtracted from the
@@ -46,6 +45,13 @@ function desktopViewportRatio(): number | undefined {
 // fires immediately, deleting the stale wallpaper's place in state and
 // requesting a brand new one for the new day.
 const DAY_CHANGE_POLL_MS = 60_000;
+
+// The device's own current zone -- not the profile's, which is the *birth*
+// timezone (needed for the natal chart). Someone born in Nepal and living
+// in Finland needs the wallpaper to roll over at Finnish midnight.
+function currentTimeZone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone;
+}
 
 function localDateString(timezone: string): string {
   const zoned = toZonedTime(new Date(), timezone);
@@ -97,7 +103,7 @@ export default function HomePage() {
     try {
       const { horoscope: latest } = await apiFetch<{ horoscope: HoroscopeDTO }>("/api/horoscope/generate", {
         method: "POST",
-        body: JSON.stringify({ desktopRatio: isMobile ? undefined : desktopViewportRatio() }),
+        body: JSON.stringify({ timezone: currentTimeZone(), desktopRatio: isMobile ? undefined : desktopViewportRatio() }),
       });
       setHoroscope(latest);
     } catch {
@@ -107,19 +113,21 @@ export default function HomePage() {
 
   const lastSeenDayRef = useRef<string | null>(null);
 
+  const hasProfile = Boolean(profile);
   useEffect(() => {
-    const timezone = profile?.timezone;
-    if (!timezone) return;
-    lastSeenDayRef.current = localDateString(timezone);
+    if (!hasProfile) return;
+    lastSeenDayRef.current = localDateString(currentTimeZone());
     const intervalId = setInterval(() => {
-      const today = localDateString(timezone);
+      // Re-read every tick so a device that travels (or changes its zone
+      // setting) follows its new local midnight.
+      const today = localDateString(currentTimeZone());
       if (today !== lastSeenDayRef.current) {
         lastSeenDayRef.current = today;
         refreshHoroscope();
       }
     }, DAY_CHANGE_POLL_MS);
     return () => clearInterval(intervalId);
-  }, [refreshHoroscope, profile?.timezone]);
+  }, [refreshHoroscope, hasProfile]);
 
   async function handleSaved(savedProfile: BirthProfileDTO) {
     setProfile(savedProfile);
@@ -128,7 +136,7 @@ export default function HomePage() {
     try {
       const { horoscope: generated } = await apiFetch<{ horoscope: HoroscopeDTO }>("/api/horoscope/generate", {
         method: "POST",
-        body: JSON.stringify({ refresh: true, desktopRatio: isMobile ? undefined : desktopViewportRatio() }),
+        body: JSON.stringify({ refresh: true, timezone: currentTimeZone(), desktopRatio: isMobile ? undefined : desktopViewportRatio() }),
       });
       setHoroscope(generated);
       setFrameMode(viewMode === "FRAME");
@@ -140,7 +148,7 @@ export default function HomePage() {
   }
 
   if (horoscope?.imageUrl) {
-    const luckScore = calculateLuckScore(horoscope.astrologyData);
+    const luckScore = horoscope.dailyReading.luckScore;
     const imageUrl = (isMobile && horoscope.imageUrlMobile) || horoscope.imageUrl;
 
     if (frameMode) {

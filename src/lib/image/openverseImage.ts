@@ -1,4 +1,4 @@
-import { dailyIntentQuery, DailyIntent } from "./dailyIntent";
+import { dailyIntentQueries, DailyIntent } from "./dailyIntent";
 
 const OPENVERSE_API = "https://api.openverse.org/v1/images/";
 const REQUEST_TIMEOUT_MS = 8000;
@@ -36,17 +36,12 @@ export async function generateOpenverseImage(params: {
    */
   randomize?: boolean;
 }): Promise<{ buffer: Buffer; contentType: string; extension: string; prompt: string }> {
-  const query = dailyIntentQuery(params.intent);
-  const mood = params.intent.keywords[0];
   // The most specific query is tried first for the best thematic match, but
-  // measuring live result counts showed it (and the "human emotion art"
-  // fallback) can collapse to a tiny pool depending on mood -- for
-  // mood="joyful" specifically, "joyful human emotion art" returns exactly
-  // ONE photo in the whole Openverse index, so every "joyful" user was
-  // always getting that same single image no matter how the final pick was
-  // randomized. "${mood} art" reliably returns Openverse's full page of
-  // results for every mood, so it's kept as a guaranteed-large last resort.
-  const queries = [query, `${mood} human emotion art`, `${mood} art`];
+  // a combined mood+theme phrase can collapse to a tiny pool -- so broader
+  // fallbacks follow, ending in "${mood} art", which reliably returns
+  // Openverse's full page of results for every mood.
+  const queries = dailyIntentQueries(params.intent);
+  const query = queries[0];
   const MIN_GOOD_POOL_SIZE = 15;
   const page = params.randomize ? 1 + Math.floor(Math.random() * 5) : 1;
 
