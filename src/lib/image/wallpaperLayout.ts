@@ -37,6 +37,8 @@ export interface GocharLayout {
   /** "भाग्य कुन्डली", shaped -- the Devanagari half of the caption's title. */
   titleText: ShapedText;
   facts: { text: ShapedText; size: number } | null;
+  /** The "Analysis" panel just right of the chart (see gocharOverlay.ts), or null without room. */
+  analysis: Box | null;
   /** The Panchang prediction below the chart, if there is one. */
   strip: { box: Box; lines: ShapedText[]; size: number; lineHeight: number; padY: number } | null;
 }
@@ -91,6 +93,7 @@ async function gocharBlock(opts: {
         y0,
         size,
         caption: { x: cx - captionW / 2, y: top, w: captionW, h: captionH },
+        analysis: null, // placed by layoutWallpaper, which knows the canvas
         titleHeight,
         legendHeight,
         titleText: opts.titleText,
@@ -124,6 +127,24 @@ export async function layoutWallpaper(params: {
   const startY = params.headerBottom + gap;
   const regionBottom = luckTop - gap;
 
+  // The Analysis panel: just right of the chart, from the top of its
+  // caption, as tall as fits -- clear of the corner diagrams (and their
+  // names) on that side.
+  const withAnalysis = (gochar: GocharLayout): GocharLayout => {
+    const x = Math.max(gochar.x0 + gochar.size, gochar.caption.x + gochar.caption.w) + gap;
+    const w = Math.min(width - gap - x, minDim * 0.34);
+    if (w < minDim * 0.14) return gochar;
+    let top = gochar.caption.y;
+    let bottom = Math.min(regionBottom, gochar.y0 + gochar.size * 1.5);
+    for (const box of boxes.filter((b) => b.spec.corner.endsWith("right"))) {
+      if (x + w <= box.x - gap / 2) continue;
+      const zone = diagramZone(box);
+      if (box.spec.corner.startsWith("top")) top = Math.max(top, zone.bottom + gap);
+      else bottom = Math.min(bottom, zone.top - gap);
+    }
+    return bottom - top >= minDim * 0.15 ? { ...gochar, analysis: { x, y: top, w, h: bottom - top } } : gochar;
+  };
+
   if (width > height) {
     // The gauge at the center of the image (or just below the header, if
     // that reaches lower); the gochar block in a column to the right,
@@ -152,7 +173,7 @@ export async function layoutWallpaper(params: {
           size = Math.max(minDim * 0.15, size - (block.height - colH) / 1.1);
           block = await gocharBlock({ ...blockOpts, size });
         }
-        gocharLayout = block.place(Math.min(Math.max(cy - block.height / 2, colTop), regionBottom - block.height));
+        gocharLayout = withAnalysis(block.place(Math.min(Math.max(cy - block.height / 2, colTop), regionBottom - block.height)));
       }
       return { gauge: d >= minDim * 0.05 ? { cx, cy, d } : null, gochar: gocharLayout };
     }
@@ -177,7 +198,7 @@ export async function layoutWallpaper(params: {
       size = Math.max(minDim * 0.15, size - (block.height - maxHeight) / 1.1);
       block = await gocharBlock({ ...blockOpts, size });
     }
-    gocharLayout = block.place(regionBottom - block.height);
+    gocharLayout = withAnalysis(block.place(regionBottom - block.height));
     gaugeBottom = gocharLayout.caption.y - gap * 2;
   }
   const d = score != null ? Math.min(minDim * GAUGE_FRACTION, gaugeBottom - startY) : 0;

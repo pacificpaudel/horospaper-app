@@ -86,6 +86,82 @@ function isObstructed(graha: Graha, house: number, houses: Partial<Record<Graha,
   );
 }
 
+// Phaladeepika ch. 26's stated result for each graha in houses 1-12 from
+// the natal Moon, condensed to a few words (slokas 9-24). Ketu as Rahu.
+const RAHU_REASONS = [
+  "SICKNESS, DANGER", "LOSS OF WEALTH", "HAPPINESS", "SORROW", "FINANCIAL LOSS", "HAPPINESS",
+  "LOSS", "DANGER TO LIFE", "LOSS", "GAIN", "HAPPINESS", "EXPENDITURE",
+];
+const TRANSIT_REASONS: Record<Graha, string[]> = {
+  sun: [
+    "FATIGUE, LOSS OF WEALTH", "LOSS OF WEALTH, DECEIT", "NEW POSITION, MONEY, HEALTH", "ILLNESS, OBSTACLES",
+    "AGITATION, ILL-HEALTH", "ENEMIES AND ILLS DEFEATED", "TIRING TRAVEL, ILLNESS", "FEAR, ILLNESS, QUARRELS",
+    "DANGER, HUMILIATION", "GREAT TASKS SUCCEED", "HONOUR, WEALTH, HEALTH", "SORROW, LOSS, FEVER",
+  ],
+  moon: [
+    "FORTUNE DAWNS", "LOSS OF WEALTH", "SUCCESS", "FEAR", "SORROW", "FREEDOM FROM DISEASE",
+    "HAPPINESS", "UNTOWARD EVENTS", "SICKNESS", "WISHES FULFILLED", "JOY", "EXPENDITURE",
+  ],
+  mars: [
+    "ILLNESS, SEPARATION", "FEAR, LOSS OF WEALTH", "SUCCESS, HAPPINESS", "LOSS OF POSITION, ILLNESS",
+    "FEVER, ANGUISH", "VICTORY OVER ENEMIES, GAIN", "DISCORD, ILLNESS", "FEVER, LOSS OF HONOUR",
+    "LOSS OF WEALTH, WEAKNESS", "FAILURE, EXHAUSTION", "GAIN, HEALTH, PROPERTY", "LOSS OF WEALTH, ILLNESS",
+  ],
+  mercury: [
+    "LOSS OF WEALTH", "FINANCIAL GAIN", "FEAR FROM ENEMIES", "MONEY COMES IN", "QUARRELS AT HOME", "SUCCESS",
+    "MISUNDERSTANDINGS", "CHILDREN, WEALTH", "IMPEDIMENTS", "HAPPINESS ALL ROUND", "PROSPERITY", "FEAR OF HUMILIATION",
+  ],
+  jupiter: [
+    "HEAVY EXPENSE, TRAVEL", "MONEY, HAPPY HOME", "LOSS OF POSITION, ILLNESS", "HUMILIATION, DANGER",
+    "CHILDREN, ROYAL FAVOUR", "ENEMIES, DISEASE", "HAPPY MARRIAGE, GOOD TRAVEL", "MISERY, LOSS OF MONEY",
+    "ALL PROSPERITY", "DANGER TO PROPERTY", "HONOUR, NEW POSITION", "GRIEF AND FEAR",
+  ],
+  venus: [
+    "ALL ENJOYMENTS", "FINANCIAL GAIN", "PROSPERITY", "HAPPINESS, FRIENDS", "CHILDREN", "MISHAP",
+    "TROUBLE TO SPOUSE", "WEALTH", "HAPPINESS", "QUARRELS", "SAFETY", "MONEY GAINED",
+  ],
+  saturn: [
+    "DISEASE", "TROUBLE TO WEALTH, CHILDREN", "POSITION, SERVANTS, MONEY", "LOSS OF SPOUSE, WEALTH",
+    "WEALTH DECLINES", "HAPPINESS ALL ROUND", "SPOUSE SUFFERS, FEAR", "LOSSES, DISEASE",
+    "LOSSES, OBSTACLES", "LOSS OF HONOUR, DISEASE", "HAPPINESS, WEALTH, HONOUR", "ROBBED, FAMILY ILLNESS",
+  ],
+  rahu: RAHU_REASONS,
+  ketu: RAHU_REASONS,
+};
+
+export interface GocharAssessment {
+  quality: GocharQuality;
+  /** The classical result for this house, in short. */
+  reason: string;
+  /** For a favorable transit cancelled by vedha: the graha causing it and its house. */
+  blockedBy?: { planet: string; house: number };
+}
+
+/**
+ * The full verdict behind gocharQuality: the quality, the classical
+ * reason, and -- when vedha cancels a favorable transit -- what blocks it.
+ * `allHouses` is every graha's current house from the Moon, by English name.
+ */
+export function gocharAssessment(planetName: string, house: number, allHouses?: Record<string, number>): GocharAssessment {
+  const graha = planetName.toLowerCase() as Graha;
+  const results = TRANSIT_RESULTS[graha];
+  if (!results || house < 1 || house > 12) return { quality: "neutral", reason: "" };
+  const reason = TRANSIT_REASONS[graha][house - 1];
+  const code = results[house - 1];
+  if (code === "G" && allHouses) {
+    const vedhaHouse = VEDHA[graha][house];
+    const blocker = VEDHA_CASTERS.find(
+      (other) =>
+        other !== graha &&
+        vedhaHouse !== undefined &&
+        Object.entries(allHouses).some(([name, h]) => name.toLowerCase() === other && h === vedhaHouse) &&
+        !NO_MUTUAL_VEDHA.some(([x, y]) => (x === graha && y === other) || (x === other && y === graha))
+    );
+    if (blocker) return { quality: "neutral", reason, blockedBy: { planet: blocker[0].toUpperCase() + blocker.slice(1), house: vedhaHouse } };
+  }
+  return { quality: code === "G" ? "good" : code === "B" ? "bad" : "neutral", reason };
+}
+
 /**
  * Good / neutral / bad for a graha (English name, e.g. "Sun", "Rahu") in
  * `house` (1-12) counted from the natal Moon sign (see TRANSIT_RESULTS).

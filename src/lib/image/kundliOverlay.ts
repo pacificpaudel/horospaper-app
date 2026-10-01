@@ -47,6 +47,23 @@ const HOUSES: { label: [number, number]; num: [number, number] }[] = [
 // enough. Houses 6 and 8 (the bottom triangles) narrow to a point at the
 // top, where their rashi number already sits, so theirs go in the lower
 // outer corner instead; house 7's top is likewise taken by its rashi.
+// Each house's outline (fractions of the chart's side), houses 1-12: the
+// top diamond is house 1, then counter-clockwise.
+const HOUSE_POLYGONS: [number, number][][] = [
+  [[0.5, 0], [0.75, 0.25], [0.5, 0.5], [0.25, 0.25]],
+  [[0, 0], [0.5, 0], [0.25, 0.25]],
+  [[0, 0], [0.25, 0.25], [0, 0.5]],
+  [[0, 0.5], [0.25, 0.25], [0.5, 0.5], [0.25, 0.75]],
+  [[0, 0.5], [0.25, 0.75], [0, 1]],
+  [[0, 1], [0.25, 0.75], [0.5, 1]],
+  [[0.5, 1], [0.25, 0.75], [0.5, 0.5], [0.75, 0.75]],
+  [[0.5, 1], [0.75, 0.75], [1, 1]],
+  [[1, 1], [0.75, 0.75], [1, 0.5]],
+  [[1, 0.5], [0.75, 0.75], [0.5, 0.5], [0.75, 0.25]],
+  [[1, 0.5], [0.75, 0.25], [1, 0]],
+  [[1, 0], [0.75, 0.25], [0.5, 0]],
+];
+
 const ICON_H = 0.07;
 const HOUSE_ICONS: [number, number][] = [
   [0.5, 0.06],
@@ -191,7 +208,9 @@ export function kundliChartMarkup(
   onDate: string | null,
   previous?: KundliData,
   /** Each graha label's colour (by English name); white when not given. */
-  colorFor?: (planetName: string) => string
+  colorFor?: (planetName: string) => string,
+  /** A background tint for house i (0-based, house 1 = 0), or null for none. */
+  houseFill?: (houseIndex: number) => string | null
 ): string {
   const P = (fx: number, fy: number) => `${(x0 + fx * size).toFixed(1)} ${(y0 + fy * size).toFixed(1)}`;
 
@@ -201,6 +220,13 @@ export function kundliChartMarkup(
     `M${P(1, 0)} L${P(0, 1)}`,
     `M${P(0.5, 0)} L${P(1, 0.5)} L${P(0.5, 1)} L${P(0, 0.5)} Z`,
   ];
+
+  const houseTints = houseFill
+    ? HOUSE_POLYGONS.map((corners, i) => {
+        const fill = houseFill(i);
+        return fill ? `<path d="M${corners.map(([fx, fy]) => P(fx, fy)).join(" L")} Z" fill="${fill}" fill-opacity="0.3" />` : "";
+      }).join("")
+    : "";
 
   const fontSize = size * 0.072;
   const numberSize = size * 0.03;
@@ -343,6 +369,7 @@ export function kundliChartMarkup(
     ${backdrop}
     ${header}
     <rect x="${x0}" y="${y0}" width="${size}" height="${size}" fill="none" stroke="#f7c56a" stroke-width="${stroke.toFixed(1)}" />
+    ${houseTints}
     <path d="${lines.join(" ")}" fill="none" stroke="#f7c56a" stroke-opacity="0.85" stroke-width="${stroke.toFixed(1)}" />
     ${houseIcons}
     ${numbers}

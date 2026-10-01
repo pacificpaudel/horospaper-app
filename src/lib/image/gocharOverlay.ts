@@ -1,8 +1,9 @@
 import type { KundliData } from "@/lib/astrologyApi";
 import { gocharKundli, kundliChartMarkup, MOVED_COLOR } from "./kundliOverlay";
 import { devanagariMarkup, PANCHANG_FACTS_COLOR, PANCHANG_SUMMARY_COLOR } from "./panchangOverlay";
-import { buildVectorTextMarkup, measureVectorText, TextStyle } from "./vectorFont";
-import { gocharQuality, GocharQuality } from "@/lib/astrology/gochar";
+import { buildVectorTextMarkup, measureVectorText, TextStyle, wrapVectorText } from "./vectorFont";
+import type { Box } from "./schumannOverlay";
+import { gocharAssessment, gocharQuality, GocharQuality } from "@/lib/astrology/gochar";
 import type { GocharLayout } from "./wallpaperLayout";
 
 const DEVANAGARI_SCALE = 1.55;
@@ -13,6 +14,67 @@ const QUALITY_COLORS: Record<GocharQuality, string> = {
   neutral: "#c08a50",
   bad: "#ff4d4d",
 };
+
+const SIGN_NAMES = ["", "ARIES", "TAURUS", "GEMINI", "CANCER", "LEO", "VIRGO", "LIBRA", "SCORPIO", "SAGITTARIUS", "CAPRICORN", "AQUARIUS", "PISCES"];
+const ordinal = (n: number) => `${n}${n % 10 === 1 && n !== 11 ? "ST" : n % 10 === 2 && n !== 12 ? "ND" : n % 10 === 3 && n !== 13 ? "RD" : "TH"}`;
+
+/**
+ * The "Analysis" panel beside the Luck Chart: for each graha, its house
+ * counted from the natal Moon sign (which is what decides good / neutral /
+ * bad), the verdict in its colour, and why -- Phaladeepika's stated result
+ * for that house, or, for a favorable transit cancelled by vedha, which
+ * graha blocks it. Text shrinks until it all fits the box.
+ */
+function analysisMarkup(box: Box, planets: string[], allHouses: Record<string, number>, natalMoonSign: number): string {
+  const rows = planets.map((name) => ({ name, house: allHouses[name], ...gocharAssessment(name, allHouses[name], allHouses) }));
+  const pad = box.w * 0.06;
+  const innerW = box.w - pad * 2;
+  const titleStyle: TextStyle = { color: "#f7c56a", strokeWidth: 0.12, tracking: 0.2 };
+  const noteStyle: TextStyle = { color: "#a9b1c4", strokeWidth: 0.11, tracking: 0.08 };
+  const reasonStyle: TextStyle = { color: "#d7dce8", strokeWidth: 0.11, tracking: 0.06 };
+  const subtitle = `HOUSE FROM MOON: ${SIGN_NAMES[natalMoonSign]}`;
+  const footer = "PER PHALADEEPIKA CH. 26";
+
+  // Largest text size at which every line fits the box's width and height.
+  let size = Math.min(box.w * 0.055, box.h * 0.04);
+  let layout: { head: string; reason: string[]; color: string }[] = [];
+  let height = 0;
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const s = size;
+    const fit = (text: string, style: TextStyle) => measureVectorText(text, s, style) <= innerW;
+    layout = rows.map((row) => ({
+      head: `${row.name.toUpperCase()} · ${ordinal(row.house)} · ${row.quality.toUpperCase()}`,
+      reason: wrapVectorText(row.blockedBy ? `GOOD HOUSE, BLOCKED BY ${row.blockedBy.planet.toUpperCase()} IN ${ordinal(row.blockedBy.house)} (VEDHA)` : row.reason, innerW, s * 0.9, reasonStyle),
+      color: QUALITY_COLORS[row.quality],
+    }));
+    const lines = layout.reduce((sum, row) => sum + 1 + row.reason.length, 0);
+    height = pad * 2 + s * 1.3 * 1.8 + s * 0.85 * 1.7 + lines * s * 1.45 + rows.length * s * 0.45 + s * 0.8 * 1.6;
+    const widthOk = fit("ANALYSIS", titleStyle) && measureVectorText(subtitle, s * 0.85, noteStyle) <= innerW && layout.every((row) => fit(row.head, titleStyle));
+    if (height <= box.h && widthOk) break;
+    size *= 0.93;
+  }
+
+  const parts = [
+    `<rect x="${box.x.toFixed(1)}" y="${box.y.toFixed(1)}" width="${box.w.toFixed(1)}" height="${Math.min(height, box.h).toFixed(1)}" rx="${(size * 0.8).toFixed(1)}" fill="#080b16" fill-opacity="0.85" stroke="#f7c56a" stroke-opacity="0.55" stroke-width="${Math.max(1, size * 0.08).toFixed(1)}" />`,
+  ];
+  let y = box.y + pad;
+  parts.push(buildVectorTextMarkup("ANALYSIS", box.x + pad, y, size * 1.3, titleStyle));
+  y += size * 1.3 * 1.8;
+  parts.push(buildVectorTextMarkup(subtitle, box.x + pad, y, size * 0.85, noteStyle));
+  y += size * 0.85 * 1.7;
+  for (const row of layout) {
+    parts.push(`<circle cx="${(box.x + pad + size * 0.35).toFixed(1)}" cy="${(y + size / 2).toFixed(1)}" r="${(size * 0.35).toFixed(1)}" fill="${row.color}" />`);
+    parts.push(buildVectorTextMarkup(row.head, box.x + pad + size, y, size, { ...titleStyle, color: row.color, tracking: 0.1 }));
+    y += size * 1.45;
+    for (const line of row.reason) {
+      parts.push(buildVectorTextMarkup(line, box.x + pad + size, y, size * 0.9, reasonStyle));
+      y += size * 1.45;
+    }
+    y += size * 0.45;
+  }
+  parts.push(buildVectorTextMarkup(footer, box.x + pad, y + size * 0.3, size * 0.8, noteStyle));
+  return `<g>${parts.join("")}</g>`;
+}
 
 /** "● GOOD  ● NEUTRAL  ● BAD", centered on `cx` in a row `h` tall from `top`. */
 function qualityLegend(cx: number, top: number, h: number): string {
@@ -67,6 +129,24 @@ export function buildGocharMarkup(layout: GocharLayout, kundli: KundliData, onDa
     return QUALITY_COLORS[gocharQuality(name, allHouses[name], allHouses)];
   };
 
+  // House backgrounds: green where every graha in the house is good, brown
+  // where every one is neutral, red where every one is bad; a house with
+  // any two different verdicts (or no graha) stays as it is.
+  const qualitiesByHouse: GocharQuality[][] = Array.from({ length: 12 }, () => []);
+  if (natalMoonSign !== undefined) {
+    for (const planet of today.planets) {
+      qualitiesByHouse[(planet.sign - today.ascendantSign + 12) % 12].push(gocharQuality(planet.name, allHouses[planet.name], allHouses));
+    }
+  }
+  const houseFill = (i: number) => {
+    const qualities = qualitiesByHouse[i];
+    if (!qualities.length) return null;
+    if (qualities.every((q) => q === "good")) return QUALITY_COLORS.good;
+    if (qualities.every((q) => q === "neutral")) return QUALITY_COLORS.neutral;
+    if (qualities.every((q) => q === "bad")) return QUALITY_COLORS.bad;
+    return null;
+  };
+
   const stroke = Math.max(1.2, size * 0.006);
   const radius = size * 0.02;
   const titleStyle: TextStyle = { color: "#f7c56a", strokeWidth: 0.12, tracking: 0.16 };
@@ -94,7 +174,8 @@ export function buildGocharMarkup(layout: GocharLayout, kundli: KundliData, onDa
     legend ? buildVectorTextMarkup(legend, textLeft + devanagariWidth + latinWidth, textTop, textSize, legendStyle) : "",
     facts ? devanagariMarkup(facts.text, centerX, caption.y + layout.titleHeight + (caption.h - layout.legendHeight - layout.titleHeight - facts.size) / 2 - facts.size * 0.15, facts.size, PANCHANG_FACTS_COLOR, "center") : "",
     qualityLegend(centerX, caption.y + caption.h - layout.legendHeight, layout.legendHeight),
-    kundliChartMarkup(x0, y0, size, today, null, yesterday, colorFor),
+    kundliChartMarkup(x0, y0, size, today, null, yesterday, colorFor, houseFill),
+    layout.analysis && natalMoonSign !== undefined ? analysisMarkup(layout.analysis, today.planets.map((p) => p.name), allHouses, natalMoonSign) : "",
   ];
   if (strip) {
     const { box, lines, size: lineSize, lineHeight, padY } = strip;
