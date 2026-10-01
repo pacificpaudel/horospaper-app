@@ -22,10 +22,9 @@ const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "
 
 // The gauge's colors, as hex conversions of the site's hsl() values.
 const TRACK_COLOR = "#1b1f32"; // hsl(230, 30%, 15%)
-const DIM_DOT_COLOR = "#2d3353"; // hsl(230, 30%, 25%)
 const MUTED_COLOR = "#a3acc6";
-/** The gauge's level word ("CALM", ...) under the score. */
-const LEVEL_TEXT_COLOR = "#ff4d4d";
+/** The gauge's score and level word, on its level-coloured face. */
+const GAUGE_TEXT_COLOR = "#000000";
 const NOW_COLOR = "#ff4d4d";
 
 /** This hour's snapshot, plus who it's drawn for: their time zone and the render time. */
@@ -45,9 +44,9 @@ export interface Box {
 
 function levelColor(score: number): string {
   if (score <= 25) return "#30abe8"; // hsl(200, 80%, 55%)
-  if (score <= 50) return "#ffc61a"; // hsl(45, 100%, 55%)
-  if (score <= 75) return "#ff3d3d"; // hsl(0, 100%, 62%)
-  return "#ff3dff"; // hsl(300, 100%, 62%)
+  if (score <= 50) return "#f7a21b"; // sunset yellow
+  if (score <= 75) return "#f2542d"; // sunset red
+  return "#b3121f"; // dark red
 }
 
 export interface GraphChrome {
@@ -100,8 +99,9 @@ export function buildGaugeMarkup(cx: number, cy: number, d: number, score: numbe
 
   const dots = Array.from({ length: 12 }, (_, i) => {
     const angle = (i * 30 * Math.PI) / 180;
-    const fill = i * 8.33 <= score ? color : DIM_DOT_COLOR;
-    return `<circle cx="${(cx + 100 * s * Math.cos(angle)).toFixed(1)}" cy="${(cy + 100 * s * Math.sin(angle)).toFixed(1)}" r="${(2.5 * s).toFixed(1)}" fill="${fill}" />`;
+    // On the filled face: dark dots for the score so far, faint light ones after.
+    const fill = i * 8.33 <= score ? `fill="${GAUGE_TEXT_COLOR}" fill-opacity="0.55"` : `fill="#ffffff" fill-opacity="0.35"`;
+    return `<circle cx="${(cx + 100 * s * Math.cos(angle)).toFixed(1)}" cy="${(cy + 100 * s * Math.sin(angle)).toFixed(1)}" r="${(2.5 * s).toFixed(1)}" ${fill} />`;
   }).join("");
   const arc = (extra: string) =>
     `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${r.toFixed(1)}" fill="none" stroke="${color}" stroke-width="${stroke.toFixed(1)}" stroke-linecap="round" stroke-dasharray="${filled.toFixed(1)} ${circumference.toFixed(1)}" ${extra} />`;
@@ -109,14 +109,14 @@ export function buildGaugeMarkup(cx: number, cy: number, d: number, score: numbe
   const numberText = String(score);
   const numberSize = d * 0.28;
   const levelText = schumannLevel(score).toUpperCase();
-  // The level ("CALM", "INTENSE", ...) in red under the number, as large
+  // The level ("CALM", "INTENSE", ...) under the number, as large
   // as fits inside the ring.
-  const levelStyle: TextStyle = { color: LEVEL_TEXT_COLOR, strokeWidth: 0.2, tracking: 0.18 };
-  const levelSize = Math.min(d * 0.1, (d * 0.72 * d * 0.1) / measureVectorText(levelText, d * 0.1, levelStyle));
+  const levelStyle: TextStyle = { color: GAUGE_TEXT_COLOR, strokeWidth: 0.2, tracking: 0.18 };
+  const levelSize = Math.min(d * 0.1, (d * 0.62 * d * 0.1) / measureVectorText(levelText, d * 0.1, levelStyle));
   const contentHeight = numberSize + levelSize * 0.9 + levelSize;
   const numberTop = cy - contentHeight / 2;
   const levelTop = numberTop + numberSize + levelSize * 0.9;
-  const numberStyle: TextStyle = { color, strokeWidth: 0.21, tracking: 0.1 };
+  const numberStyle: TextStyle = { color: GAUGE_TEXT_COLOR, strokeWidth: 0.21, tracking: 0.1 };
 
   return `
   <g>
@@ -129,11 +129,11 @@ export function buildGaugeMarkup(cx: number, cy: number, d: number, score: numbe
     </defs>
     <circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${(130 * s).toFixed(1)}" fill="url(#srGaugeGlow)" />
     <circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${r.toFixed(1)}" fill="none" stroke="${TRACK_COLOR}" stroke-opacity="0.85" stroke-width="${stroke.toFixed(1)}" />
+    <circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${(r - stroke * 1.4).toFixed(1)}" fill="${color}" />
     <g transform="rotate(-90 ${cx.toFixed(1)} ${cy.toFixed(1)})">
       ${score > 0 ? arc(`filter="url(#srGaugeBlur)" opacity="0.85"`) + arc("") : ""}
       ${dots}
     </g>
-    <g filter="url(#srGaugeBlur)" opacity="0.8">${buildCenteredVectorTextMarkup(numberText, cx, numberTop, numberSize, numberStyle)}</g>
     ${buildCenteredVectorTextMarkup(numberText, cx, numberTop, numberSize, numberStyle)}
     ${buildCenteredVectorTextMarkup(levelText, cx, levelTop, levelSize, levelStyle)}
   </g>`;

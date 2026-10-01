@@ -8,10 +8,18 @@
 // Uppercase only (text is upper-cased here). Glyphs are set slightly
 // condensed so lines keep roughly the widths the layouts were tuned for.
 
-import { LATIN_GLYPHS, LATIN_SPACE_WIDTH } from "./latinGlyphs";
+import { CLEAR_GLYPHS, CLEAR_SPACE_WIDTH, LATIN_GLYPHS, LATIN_SPACE_WIDTH, LatinGlyph } from "./latinGlyphs";
 
-/** Horizontal scale applied to every glyph and advance. */
-const CONDENSE = 0.84;
+/**
+ * The two faces: Noto Sans (default), set slightly condensed and
+ * emboldened per style; and "clear", Atkinson Hyperlegible Bold, a face
+ * built for legibility, set at its natural width and weight (the Luck
+ * Chart and its Analysis panel).
+ */
+const FACES = {
+  default: { glyphs: LATIN_GLYPHS, space: LATIN_SPACE_WIDTH, condense: 0.84, emboldens: true },
+  clear: { glyphs: CLEAR_GLYPHS, space: CLEAR_SPACE_WIDTH, condense: 1, emboldens: false },
+} satisfies Record<string, { glyphs: Record<string, LatinGlyph>; space: number; condense: number; emboldens: boolean }>;
 /** Share of a style's `tracking` actually applied (real glyphs carry their own side bearings). */
 const TRACKING_SHARE = 0.35;
 
@@ -27,15 +35,19 @@ export interface TextStyle {
   strokeWidth?: number;
   /** Extra space between glyphs, as a fraction of the glyph size. */
   tracking?: number;
+  /** "clear": Atkinson Hyperlegible Bold instead of Noto Sans (see FACES). */
+  face?: keyof typeof FACES;
 }
 
-const advanceOf = (ch: string) => (LATIN_GLYPHS[ch]?.width ?? LATIN_SPACE_WIDTH) * CONDENSE;
+const faceOf = (style: TextStyle) => FACES[style.face ?? "default"];
+const advanceOf = (face: (typeof FACES)[keyof typeof FACES], ch: string) => (face.glyphs[ch]?.width ?? face.space) * face.condense;
 
 /** Measures the advance width (in px) of `text` at the given cap-height `size`, without rendering it. */
 export function measureVectorText(text: string, size: number, style: TextStyle = {}): number {
+  const face = faceOf(style);
   const tracking = (style.tracking ?? 0.16) * TRACKING_SHARE * size;
   let width = 0;
-  for (const ch of text.toUpperCase()) width += advanceOf(ch) * size + tracking;
+  for (const ch of text.toUpperCase()) width += advanceOf(face, ch) * size + tracking;
   return Math.max(0, width - tracking);
 }
 
@@ -44,17 +56,18 @@ export function buildVectorTextMarkup(text: string, x: number, y: number, size: 
   const color = style.color ?? "#ffffff";
   const opacity = style.opacity ?? 1;
   const tracking = (style.tracking ?? 0.16) * TRACKING_SHARE * size;
+  const face = faceOf(style);
   // Outline in glyph units (the path is scaled by `size`), so it emboldens evenly.
-  const bold = Math.max(0, ((style.strokeWidth ?? 0.075) - 0.1) * 0.5);
+  const bold = face.emboldens ? Math.max(0, ((style.strokeWidth ?? 0.075) - 0.1) * 0.5) : 0;
 
   let cursor = x;
   let body = "";
   for (const ch of text.toUpperCase()) {
-    const glyph = LATIN_GLYPHS[ch];
+    const glyph = face.glyphs[ch];
     if (glyph?.d) {
-      body += `<path d="${glyph.d}" transform="translate(${cursor.toFixed(1)} ${y.toFixed(1)}) scale(${(size * CONDENSE).toFixed(2)} ${size.toFixed(2)})" />`;
+      body += `<path d="${glyph.d}" transform="translate(${cursor.toFixed(1)} ${y.toFixed(1)}) scale(${(size * face.condense).toFixed(2)} ${size.toFixed(2)})" />`;
     }
-    cursor += advanceOf(ch) * size + tracking;
+    cursor += advanceOf(face, ch) * size + tracking;
   }
   const outline = bold > 0 ? ` stroke="${color}" stroke-width="${bold.toFixed(3)}" stroke-linejoin="round"` : "";
   return `<g opacity="${opacity}" fill="${color}"${outline}>${body}</g>`;

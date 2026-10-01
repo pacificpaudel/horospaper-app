@@ -29,9 +29,9 @@ function analysisMarkup(box: Box, planets: string[], allHouses: Record<string, n
   const rows = planets.map((name) => ({ name, house: allHouses[name], ...gocharAssessment(name, allHouses[name], allHouses) }));
   const pad = box.w * 0.06;
   const innerW = box.w - pad * 2;
-  const titleStyle: TextStyle = { color: "#f7c56a", strokeWidth: 0.12, tracking: 0.2 };
-  const noteStyle: TextStyle = { color: "#a9b1c4", strokeWidth: 0.11, tracking: 0.08 };
-  const reasonStyle: TextStyle = { color: "#d7dce8", strokeWidth: 0.11, tracking: 0.06 };
+  const titleStyle: TextStyle = { face: "clear", color: "#f7c56a", strokeWidth: 0.12, tracking: 0.2 };
+  const noteStyle: TextStyle = { face: "clear", color: "#a9b1c4", strokeWidth: 0.11, tracking: 0.08 };
+  const reasonStyle: TextStyle = { face: "clear", color: "#d7dce8", strokeWidth: 0.11, tracking: 0.06 };
   const subtitle = `HOUSE FROM MOON: ${SIGN_NAMES[natalMoonSign]}`;
   const footer = "PER PHALADEEPIKA CH. 26";
 
@@ -79,7 +79,7 @@ function analysisMarkup(box: Box, planets: string[], allHouses: Record<string, n
 /** "● GOOD  ● NEUTRAL  ● BAD", centered on `cx` in a row `h` tall from `top`. */
 function qualityLegend(cx: number, top: number, h: number): string {
   const size = h * 0.42;
-  const style: TextStyle = { color: "#c9cfdc", strokeWidth: 0.12, tracking: 0.14 };
+  const style: TextStyle = { face: "clear", color: "#c9cfdc", strokeWidth: 0.12, tracking: 0.14 };
   const items = (["good", "neutral", "bad"] as const).map((quality) => ({ quality, label: quality.toUpperCase(), width: size * 1.1 + measureVectorText(quality.toUpperCase(), size, style) }));
   const gap = size * 1.6;
   let x = cx - (items.reduce((sum, item) => sum + item.width, 0) + gap * (items.length - 1)) / 2;
@@ -149,8 +149,8 @@ export function buildGocharMarkup(layout: GocharLayout, kundli: KundliData, onDa
 
   const stroke = Math.max(1.2, size * 0.006);
   const radius = size * 0.02;
-  const titleStyle: TextStyle = { color: "#f7c56a", strokeWidth: 0.12, tracking: 0.16 };
-  const legendStyle: TextStyle = { color: MOVED_COLOR, strokeWidth: 0.12, tracking: 0.12 };
+  const titleStyle: TextStyle = { face: "clear", color: "#f7c56a", strokeWidth: 0.12, tracking: 0.16 };
+  const legendStyle: TextStyle = { face: "clear", color: MOVED_COLOR, strokeWidth: 0.12, tracking: 0.12 };
   // Title: "भाग्य कुन्डली / LUCK CHART" (Devanagari shaped, Latin in the
   // vector font), plus the grey "yesterday" legend when something moved. Devanagari is
   // drawn DEVANAGARI_SCALE larger, on the same baseline as the Latin, so the

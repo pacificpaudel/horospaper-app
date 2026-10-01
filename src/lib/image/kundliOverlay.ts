@@ -265,8 +265,8 @@ export function kundliChartMarkup(
   const iconAt = (i: number) => (luck ? LUCK_LAYOUT[i].icon : HOUSE_ICONS[i]);
   const signAt = (i: number) => (luck ? LUCK_LAYOUT[i].sign : HOUSES[i].num);
   const numberSize = size * 0.03 * scale;
-  const numberStyle: TextStyle = { color: "#f7c56a", strokeWidth: 0.15, tracking: 0.06 };
-  const houseNumberStyle: TextStyle = { color: "#e6e9f0", strokeWidth: 0.16, tracking: 0.06 };
+  const numberStyle: TextStyle = { face: luck ? "clear" : undefined, color: "#f7c56a", strokeWidth: 0.15, tracking: 0.06 };
+  const houseNumberStyle: TextStyle = { face: luck ? "clear" : undefined, color: "#e6e9f0", strokeWidth: 0.16, tracking: 0.06 };
 
   const byHouse: Label[][] = HOUSES.map(() => []);
   byHouse[0].push({ text: ASCENDANT_LABEL, retro: false, color: "#f7c56a" });
@@ -380,7 +380,7 @@ export function kundliChartMarkup(
   // from), in a green circle a little larger than the rashi number's.
   const moonCountR = size * 0.036 * scale;
   const moonCountSize = size * 0.036 * scale;
-  const moonCountStyle: TextStyle = { color: "#ffffff", strokeWidth: 0.17, tracking: 0.04 };
+  const moonCountStyle: TextStyle = { face: "clear", color: "#ffffff", strokeWidth: 0.17, tracking: 0.04 };
   const moonCounts =
     moonSign === undefined
       ? ""
