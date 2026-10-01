@@ -1,14 +1,15 @@
 import { ImageStyle } from "@/types/enums";
 import { StructuredAstrologyData } from "@/lib/astrology";
-import { saveGeneratedFile } from "@/lib/storage";
+import { readGeneratedFile, saveGeneratedFile } from "@/lib/storage";
 import { buildImagePrompt } from "./prompt";
 import { generateMockHoroscopeImageSvg } from "./mockImage";
 import { DailyReading } from "@/lib/dailyReading";
 import { generateOpenverseImage } from "./openverseImage";
 import { withWallpaperOverlay, TargetCanvas } from "./compositeOverlay";
+import { getSchumannSnapshot, SchumannSnapshot } from "@/lib/schumann";
 import { createHash } from "node:crypto";
 
-const IMAGE_GENERATOR_VERSION = "daily-image-v20";
+const IMAGE_GENERATOR_VERSION = "daily-image-v21";
 
 // Source images (a random-aspect-ratio Openverse photo, OpenAI's fixed
 // portrait size, or the mock SVG's native 4:5) rarely match either wallpaper
@@ -44,12 +45,91 @@ function desktopTargetFor(ratio?: number): TargetCanvas {
   return { width: Math.round(DESKTOP_HEIGHT * clamped), height: DESKTOP_HEIGHT };
 }
 
+/**
+ * What the wallpaper's overlays are drawn on top of, kept with the
+ * horoscope so the overlays can be redrawn later (the hourly Schumann
+ * refresh) on the exact same artwork: the stored clean photo, or the seed
+ * the local SVG artwork is generated from.
+ */
+export type WallpaperSource =
+  | { kind: "raster"; url: string; contentType: string; extension: string }
+  | { kind: "mock"; seed: string };
+
 export interface GeneratedImage {
   url: string;
   mobileUrl: string;
   frameUrl: string;
   prompt: string;
   provider: "openai" | "openverse" | "mock";
+  source: WallpaperSource;
+  /** UTC hour of the Schumann data drawn on it (see schumann.ts). */
+  schumannHour: string;
+}
+
+interface OverlayContext {
+  assetId: string;
+  astrology: StructuredAstrologyData;
+  reading: DailyReading;
+  style: ImageStyle;
+  luckyTheme: string;
+  emotionalTheme: string;
+  desktopRatio?: number;
+  schumann: SchumannSnapshot;
+}
+
+// The Schumann hour is part of every filename: files are served as
+// immutable, so a refreshed wallpaper needs a new URL to be picked up.
+const fileStem = (ctx: OverlayContext) => `${ctx.assetId}-${IMAGE_GENERATOR_VERSION}-${ctx.schumann.hour.replace(/\D/g, "")}`;
+
+async function renderRaster(buffer: Buffer, contentType: string, extension: string, ctx: OverlayContext) {
+  const { astrology, reading, schumann } = ctx;
+  const [desktop, mobile, frame] = await Promise.all([
+    withWallpaperOverlay(buffer, astrology, reading, desktopTargetFor(ctx.desktopRatio), false, schumann),
+    withWallpaperOverlay(buffer, astrology, reading, MOBILE_TARGET, false, schumann),
+    withWallpaperOverlay(buffer, astrology, reading, FRAME_TARGET, true, schumann),
+  ]);
+  const stem = fileStem(ctx);
+  const [{ url }, { url: mobileUrl }, { url: frameUrl }] = await Promise.all([
+    saveGeneratedFile(`${stem}.${extension}`, desktop, contentType),
+    saveGeneratedFile(`${stem}-mobile.${extension}`, mobile, contentType),
+    saveGeneratedFile(`${stem}-frame.${extension}`, frame, contentType),
+  ]);
+  return { url, mobileUrl, frameUrl };
+}
+
+async function renderMock(seed: string, ctx: OverlayContext) {
+  const { astrology, reading } = ctx;
+  const svgOpts = {
+    seed,
+    style: ctx.style,
+    luckScore: reading.luckScore,
+    intent: reading.intent,
+    kundli: reading.kundli,
+    panchang: reading.panchang,
+    astrology,
+    luckyTheme: ctx.luckyTheme,
+    emotionalTheme: ctx.emotionalTheme,
+    moonIllumination: astrology.today.moonIllumination,
+    schumann: ctx.schumann,
+  };
+  const [svg, mobileSvg, frameSvg] = await Promise.all([
+    generateMockHoroscopeImageSvg({ ...svgOpts, target: desktopTargetFor(ctx.desktopRatio) }),
+    generateMockHoroscopeImageSvg({ ...svgOpts, target: MOBILE_TARGET }),
+    generateMockHoroscopeImageSvg({ ...svgOpts, target: FRAME_TARGET, flushPlanets: true }),
+  ]);
+  const stem = fileStem(ctx);
+  const [{ url }, { url: mobileUrl }, { url: frameUrl }] = await Promise.all([
+    saveGeneratedFile(`${stem}.svg`, svg, "image/svg+xml"),
+    saveGeneratedFile(`${stem}-mobile.svg`, mobileSvg, "image/svg+xml"),
+    saveGeneratedFile(`${stem}-frame.svg`, frameSvg, "image/svg+xml"),
+  ]);
+  return { url, mobileUrl, frameUrl };
+}
+
+/** Stores the clean, overlay-free photo so later hourly redraws reuse it exactly. */
+async function saveSource(assetId: string, buffer: Buffer, contentType: string, extension: string): Promise<WallpaperSource> {
+  const { url } = await saveGeneratedFile(`${assetId}-${IMAGE_GENERATOR_VERSION}-source.${extension}`, buffer, contentType);
+  return { kind: "raster", url, contentType, extension };
 }
 
 /**
@@ -69,70 +149,62 @@ export async function generateHoroscopeImage(params: {
   desktopRatio?: number;
   randomizeArt?: boolean;
 }): Promise<GeneratedImage> {
-  const { stableSeed, astrology, reading, style, luckyTheme, emotionalTheme, desktopRatio, randomizeArt } = params;
-  const DESKTOP_TARGET = desktopTargetFor(desktopRatio);
+  const { stableSeed, astrology, style, luckyTheme, emotionalTheme, randomizeArt } = params;
   const assetId = createHash("sha256").update(stableSeed).digest("hex").slice(0, 24);
   const prompt = buildImagePrompt(astrology, { style, luckyTheme, emotionalTheme });
   const provider = process.env.IMAGE_PROVIDER === "openai" && process.env.OPENAI_API_KEY ? "openai" : "openverse";
+  const schumann = await getSchumannSnapshot();
+  const ctx: OverlayContext = { ...params, assetId, schumann };
 
   if (provider === "openai") {
     try {
       const { generateWithOpenAIImage } = await import("./openaiImage");
       const buffer = await generateWithOpenAIImage(prompt);
-      const [desktop, mobile, frame] = await Promise.all([
-        withWallpaperOverlay(buffer, astrology, reading, DESKTOP_TARGET),
-        withWallpaperOverlay(buffer, astrology, reading, MOBILE_TARGET),
-        withWallpaperOverlay(buffer, astrology, reading, FRAME_TARGET, true),
-      ]);
-      const [{ url }, { url: mobileUrl }, { url: frameUrl }] = await Promise.all([
-        saveGeneratedFile(`${assetId}-${IMAGE_GENERATOR_VERSION}.png`, desktop, "image/png"),
-        saveGeneratedFile(`${assetId}-${IMAGE_GENERATOR_VERSION}-mobile.png`, mobile, "image/png"),
-        saveGeneratedFile(`${assetId}-${IMAGE_GENERATOR_VERSION}-frame.png`, frame, "image/png"),
-      ]);
-      return { url, mobileUrl, frameUrl, prompt, provider };
+      const [urls, source] = await Promise.all([renderRaster(buffer, "image/png", "png", ctx), saveSource(assetId, buffer, "image/png", "png")]);
+      return { ...urls, prompt, provider, source, schumannHour: schumann.hour };
     } catch (err) {
       console.error("[image] openai generation failed, falling back to mock:", err);
     }
   }
 
   try {
-    const result = await generateOpenverseImage({ stableSeed, intent: reading.intent, randomize: randomizeArt });
-    const [desktop, mobile, frame] = await Promise.all([
-      withWallpaperOverlay(result.buffer, astrology, reading, DESKTOP_TARGET),
-      withWallpaperOverlay(result.buffer, astrology, reading, MOBILE_TARGET),
-      withWallpaperOverlay(result.buffer, astrology, reading, FRAME_TARGET, true),
+    const result = await generateOpenverseImage({ stableSeed, intent: params.reading.intent, randomize: randomizeArt });
+    const [urls, source] = await Promise.all([
+      renderRaster(result.buffer, result.contentType, result.extension, ctx),
+      saveSource(assetId, result.buffer, result.contentType, result.extension),
     ]);
-    const [{ url }, { url: mobileUrl }, { url: frameUrl }] = await Promise.all([
-      saveGeneratedFile(`${assetId}-${IMAGE_GENERATOR_VERSION}.${result.extension}`, desktop, result.contentType),
-      saveGeneratedFile(`${assetId}-${IMAGE_GENERATOR_VERSION}-mobile.${result.extension}`, mobile, result.contentType),
-      saveGeneratedFile(`${assetId}-${IMAGE_GENERATOR_VERSION}-frame.${result.extension}`, frame, result.contentType),
-    ]);
-    return { url, mobileUrl, frameUrl, prompt: result.prompt, provider: "openverse" };
+    return { ...urls, prompt: result.prompt, provider: "openverse", source, schumannHour: schumann.hour };
   } catch (err) {
     console.error("[image] Openverse generation failed, falling back to local art:", err);
   }
 
-  const svgOpts = {
-    seed: stableSeed,
-    style,
-    luckScore: reading.luckScore,
-    intent: reading.intent,
-    kundli: reading.kundli,
-    panchang: reading.panchang,
-    astrology,
-    luckyTheme,
-    emotionalTheme,
-    moonIllumination: astrology.today.moonIllumination,
-  };
-  const [svg, mobileSvg, frameSvg] = await Promise.all([
-    generateMockHoroscopeImageSvg({ ...svgOpts, target: DESKTOP_TARGET }),
-    generateMockHoroscopeImageSvg({ ...svgOpts, target: MOBILE_TARGET }),
-    generateMockHoroscopeImageSvg({ ...svgOpts, target: FRAME_TARGET, flushPlanets: true }),
-  ]);
-  const [{ url }, { url: mobileUrl }, { url: frameUrl }] = await Promise.all([
-    saveGeneratedFile(`${assetId}-${IMAGE_GENERATOR_VERSION}.svg`, svg, "image/svg+xml"),
-    saveGeneratedFile(`${assetId}-${IMAGE_GENERATOR_VERSION}-mobile.svg`, mobileSvg, "image/svg+xml"),
-    saveGeneratedFile(`${assetId}-${IMAGE_GENERATOR_VERSION}-frame.svg`, frameSvg, "image/svg+xml"),
-  ]);
-  return { url, mobileUrl, frameUrl, prompt, provider: "mock" };
+  const urls = await renderMock(stableSeed, ctx);
+  return { ...urls, prompt, provider: "mock", source: { kind: "mock", seed: stableSeed }, schumannHour: schumann.hour };
+}
+
+/**
+ * Redraws an existing wallpaper's overlays on its original artwork with
+ * this hour's Schumann data -- no new photo, LLM or astrology work.
+ */
+export async function rerenderHoroscopeImage(params: {
+  source: WallpaperSource;
+  astrology: StructuredAstrologyData;
+  reading: DailyReading;
+  style: ImageStyle;
+  luckyTheme: string;
+  emotionalTheme: string;
+  desktopRatio?: number;
+}): Promise<{ url: string; mobileUrl: string; frameUrl: string; schumannHour: string }> {
+  const { source } = params;
+  const assetId = createHash("sha256")
+    .update(source.kind === "raster" ? source.url : source.seed)
+    .digest("hex")
+    .slice(0, 24);
+  const schumann = await getSchumannSnapshot();
+  const ctx: OverlayContext = { ...params, assetId, schumann };
+  const urls =
+    source.kind === "raster"
+      ? await renderRaster(await readGeneratedFile(source.url), source.contentType, source.extension, ctx)
+      : await renderMock(source.seed, ctx);
+  return { ...urls, schumannHour: schumann.hour };
 }

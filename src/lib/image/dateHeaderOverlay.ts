@@ -70,6 +70,15 @@ function panelRect(contentWidth: number, centerX: number, top: number, bottom: n
  * than part of the date itself.
  */
 export function buildDateHeaderMarkup(width: number, height: number, generationDate: string, intent?: DailyIntent): string {
+  return dateHeaderLayout(width, height, generationDate, intent).markup;
+}
+
+/** Bottom edge of the header (the tags panel when `intent` is given) -- overlays below it stack from here. */
+export function dateHeaderBottom(width: number, height: number, generationDate: string, intent?: DailyIntent): number {
+  return dateHeaderLayout(width, height, generationDate, intent).bottom;
+}
+
+function dateHeaderLayout(width: number, height: number, generationDate: string, intent?: DailyIntent): { markup: string; bottom: number } {
   const { weekday, dateLine } = describeDate(generationDate);
   const minDim = Math.min(width, height);
   const centerX = width / 2;
@@ -97,6 +106,7 @@ export function buildDateHeaderMarkup(width: number, height: number, generationD
     buildCenteredVectorTextMarkup(dateLine, centerX, dateY, dateSize, dateStyle),
   ];
 
+  let bottom = backdropBottom;
   if (intent) {
     const intentText = `${intent.mood} · ${intent.theme}`.toUpperCase();
     const intentStyle: TextStyle = { ...dateStyle, color: "#f7c56a" };
@@ -105,9 +115,10 @@ export function buildDateHeaderMarkup(width: number, height: number, generationD
     const intentPadTop = Math.round(intentSize * 1.1);
     const intentPadBottom = Math.round(intentSize * 1.1);
     const intentWidth = measureVectorText(intentText, intentSize, intentStyle);
-    const intentPanel = panelRect(intentWidth, centerX, intentY - intentPadTop, intentY + intentSize + intentPadBottom, intentSize);
+    bottom = intentY + intentSize + intentPadBottom;
+    const intentPanel = panelRect(intentWidth, centerX, intentY - intentPadTop, bottom, intentSize);
     markup.push(intentPanel, buildCenteredVectorTextMarkup(intentText, centerX, intentY, intentSize, intentStyle));
   }
 
-  return markup.join("");
+  return { markup: markup.join(""), bottom };
 }

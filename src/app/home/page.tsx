@@ -58,6 +58,11 @@ function localDateString(timezone: string): string {
   return `${zoned.getFullYear()}-${String(zoned.getMonth() + 1).padStart(2, "0")}-${String(zoned.getDate()).padStart(2, "0")}`;
 }
 
+// Same UTC hour bucket the server refreshes Schumann data on (schumann.ts).
+function utcHourString(): string {
+  return new Date().toISOString().slice(0, 13);
+}
+
 // The luck-meter bar is baked into the image itself (see luckMeterOverlay.ts)
 // so it's included in downloads and frame mode too -- alt text carries the
 // score for accessibility instead of a duplicate on-page overlay.
@@ -124,17 +129,24 @@ export default function HomePage() {
   }, [isMobile]);
 
   const lastSeenDayRef = useRef<string | null>(null);
+  const lastSeenHourRef = useRef<string | null>(null);
 
   const hasProfile = Boolean(profile);
   useEffect(() => {
     if (!hasProfile) return;
     lastSeenDayRef.current = localDateString(currentTimeZone());
+    lastSeenHourRef.current = utcHourString();
     const intervalId = setInterval(() => {
       // Re-read every tick so a device that travels (or changes its zone
       // setting) follows its new local midnight.
       const today = localDateString(currentTimeZone());
-      if (today !== lastSeenDayRef.current) {
+      // Each new hour too: the server redraws the wallpaper's live
+      // Schumann gauge + graph with that hour's data (same day's reading
+      // and artwork otherwise, and free -- see the generate route).
+      const hour = utcHourString();
+      if (today !== lastSeenDayRef.current || hour !== lastSeenHourRef.current) {
         lastSeenDayRef.current = today;
+        lastSeenHourRef.current = hour;
         refreshHoroscope();
       }
     }, DAY_CHANGE_POLL_MS);

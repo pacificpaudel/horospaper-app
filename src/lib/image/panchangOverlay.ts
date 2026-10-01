@@ -43,10 +43,16 @@ function devanagariMarkup(shaped: { d: string; width: number }, x: number, y: nu
  * Devanagari text needs the font loaded and each line actually shaped
  * (see devanagariShaper.ts).
  */
-export async function buildPanchangMarkup(width: number, height: number, panchang: DailyReading["panchang"]): Promise<string> {
+export async function buildPanchangMarkup(
+  width: number,
+  height: number,
+  panchang: DailyReading["panchang"],
+  /** Lowest y the panel may grow up to, e.g. below the Schumann graph (schumannOverlay.ts). */
+  ceiling = 0
+): Promise<string> {
   if (!panchang) return "";
 
-  const { x0: kundliX, y0: kundliY0, size: kundliSize, gap } = kundliRect(width, height);
+  const { x0: kundliX, y0: kundliY0, size: kundliSize, gap, top: kundliTop } = kundliRect(width, height);
   const cornerSize = cornerDiagramSize(width, height);
   const panelX = kundliX + kundliSize + gap;
   // Stays clear of the bottom-right corner planet diagram, which the panel
@@ -91,26 +97,12 @@ export async function buildPanchangMarkup(width: number, height: number, panchan
   ]);
   const [tithiLabel, tithiValue, nakshatraLabel, nakshatraValue, yogaLabel, yogaValue] = facts;
 
-  // Bottom-anchored to the same line the kundli ends on; the panel isn't
-  // allowed to grow past this ceiling (clear of the date header above), so
-  // the summary is truncated to whatever line count actually fits rather
-  // than letting text render past the box.
+  // Bottom-anchored to the same line the kundli ends on, holding just the
+  // heading and the 3 facts. The LLM's summary sentence runs as its own
+  // wide, horizontal strip above this row instead (see below), so it reads
+  // as one or two long lines rather than a narrow wrapped column.
   const bottomY = kundliY0 + kundliSize;
-  const topLimit = Math.round(height * 0.22);
-  const maxAvailableHeight = bottomY - topLimit;
-
-  // The height budget (via topLimit above) is already the real ceiling on
-  // how tall this can grow -- no extra hard line cap, since a narrower
-  // panel (e.g. mobile/frame) naturally wraps the same sentence into more,
-  // shorter lines and still needs to fit all of them.
-  const preSummaryHeight = topPad + headingSize * 1.9 + factRowHeight * 3;
-  const summaryBudget = Math.max(0, maxAvailableHeight - preSummaryHeight - bottomPad - factSize * 0.6);
-  const maxSummaryLines = Math.floor(summaryBudget / summaryLineHeight);
-
-  const summary = panchang.insight?.summary;
-  const summaryLines = summary && maxSummaryLines > 0 ? (await shapeDevanagariLines(summary, innerWidth, summarySize)).slice(0, maxSummaryLines) : [];
-
-  const panelHeight = preSummaryHeight + (summaryLines.length ? factSize * 0.6 + summaryLines.length * summaryLineHeight : 0) + bottomPad;
+  const panelHeight = topPad + headingSize * 1.9 + factRowHeight * 3 + bottomPad;
   const panelY = bottomY - panelHeight;
 
   let cursorY = panelY + topPad;
@@ -127,18 +119,66 @@ export async function buildPanchangMarkup(width: number, height: number, panchan
     cursorY += factRowHeight;
   }
 
-  if (summaryLines.length) {
-    cursorY += factSize * 0.6;
-    for (const line of summaryLines) {
-      parts.push(devanagariMarkup(line, centerX, cursorY, summarySize, summaryColor, "center"));
-      cursorY += summaryLineHeight;
-    }
-  }
+  const summaryStrip = await summaryStripMarkup({
+    summary: panchang.insight?.summary,
+    width,
+    height,
+    rowTop: Math.min(kundliTop, panelY - stroke),
+    gap,
+    ceiling,
+    size: summarySize,
+    lineHeight: summaryLineHeight,
+    stroke,
+    radius: kundliSize * 0.02,
+    color: summaryColor,
+  });
 
   return `
   <g>
     <rect x="${panelX.toFixed(1)}" y="${(panelY - stroke).toFixed(1)}" width="${panelWidth.toFixed(1)}" height="${(panelHeight + stroke * 2).toFixed(1)}" rx="${(kundliSize * 0.02).toFixed(1)}" fill="#080b16" />
     <rect x="${panelX.toFixed(1)}" y="${panelY.toFixed(1)}" width="${panelWidth.toFixed(1)}" height="${panelHeight.toFixed(1)}" fill="none" stroke="#f7c56a" stroke-opacity="0.55" stroke-width="${stroke.toFixed(1)}" />
     ${parts.join("")}
+    ${summaryStrip}
   </g>`;
+}
+
+/**
+ * The day's Panchang summary as a wide strip centered above the kundli +
+ * Panchang row: as many full-width lines as fit between `ceiling` (or the
+ * date header area, at minimum) and that row, or "" if none do.
+ */
+async function summaryStripMarkup(opts: {
+  summary: string | undefined;
+  width: number;
+  height: number;
+  rowTop: number;
+  gap: number;
+  ceiling: number;
+  size: number;
+  lineHeight: number;
+  stroke: number;
+  radius: number;
+  color: string;
+}): Promise<string> {
+  const { summary, width, height, rowTop, gap, size, lineHeight, stroke } = opts;
+  if (!summary) return "";
+  const stripWidth = Math.min(width * 0.92, Math.min(width, height) * 1.5);
+  const padX = size * 1.1;
+  const padY = size * 0.55;
+  const bottom = rowTop - gap;
+  const topLimit = Math.max(Math.round(height * 0.22), Math.round(opts.ceiling));
+  // n lines take padY * 2 + n * lineHeight - (lineHeight - size).
+  const maxLines = Math.floor((bottom - topLimit - padY * 2 + (lineHeight - size)) / lineHeight);
+  if (maxLines < 1) return "";
+
+  const lines = (await shapeDevanagariLines(summary, stripWidth - padX * 2, size)).slice(0, maxLines);
+  if (!lines.length) return "";
+  const stripHeight = padY * 2 + lines.length * lineHeight - (lineHeight - size);
+  const top = bottom - stripHeight;
+  const x = (width - stripWidth) / 2;
+  const centerX = width / 2;
+  const text = lines.map((line, i) => devanagariMarkup(line, centerX, top + padY + i * lineHeight, size, opts.color, "center")).join("");
+  return `
+    <rect x="${x.toFixed(1)}" y="${top.toFixed(1)}" width="${stripWidth.toFixed(1)}" height="${stripHeight.toFixed(1)}" rx="${opts.radius.toFixed(1)}" fill="#080b16" fill-opacity="0.82" stroke="#f7c56a" stroke-opacity="0.55" stroke-width="${stroke.toFixed(1)}" />
+    ${text}`;
 }

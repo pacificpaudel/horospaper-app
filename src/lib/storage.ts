@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { put } from "@vercel/blob";
+import { del, put } from "@vercel/blob";
 
 const LOCAL_DIR = path.join(process.cwd(), "public", "generated");
 
@@ -48,4 +48,31 @@ export async function saveGeneratedFile(
   }
 
   throw new Error(`STORAGE_PROVIDER="${provider}" is not implemented. Use "local" or "vercel-blob".`);
+}
+
+/** Reads back a file saved by saveGeneratedFile, from the URL it returned. */
+export async function readGeneratedFile(url: string): Promise<Buffer> {
+  if (url.startsWith("/generated/")) {
+    return fs.readFile(path.join(LOCAL_DIR, path.basename(url)));
+  }
+  const response = await fetch(url, { signal: AbortSignal.timeout(15000) });
+  if (!response.ok) throw new Error(`Couldn't read generated file (${response.status})`);
+  return Buffer.from(await response.arrayBuffer());
+}
+
+/**
+ * Best-effort removal of superseded files (e.g. last hour's wallpaper once
+ * the hourly refresh has replaced it), so they don't pile up all day.
+ */
+export async function deleteGeneratedFiles(urls: string[]): Promise<void> {
+  const local = urls.filter((url) => url.startsWith("/generated/"));
+  const remote = urls.filter((url) => !url.startsWith("/generated/"));
+  await Promise.allSettled(local.map((url) => fs.unlink(path.join(LOCAL_DIR, path.basename(url)))));
+  if (remote.length) {
+    try {
+      await del(remote);
+    } catch (err) {
+      console.warn("[storage] couldn't delete superseded files:", err instanceof Error ? err.message : err);
+    }
+  }
 }

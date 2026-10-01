@@ -5,7 +5,9 @@ import { buildStructuredAstrologyData, StructuredAstrologyData } from "@/lib/ast
 import { dateOnlyString } from "@/lib/astrology/dailyData";
 import { generateHoroscope } from "@/lib/llm/generateHoroscope";
 import { HoroscopeSections } from "@/lib/llm/types";
-import { generateHoroscopeImage } from "@/lib/image/generateImage";
+import { generateHoroscopeImage, rerenderHoroscopeImage, WallpaperSource } from "@/lib/image/generateImage";
+import { currentSchumannHour } from "@/lib/schumann";
+import { deleteGeneratedFiles } from "@/lib/storage";
 import { buildDailyReading, DailyReading } from "@/lib/dailyReading";
 import { fetchKundli } from "@/lib/astrologyApi";
 import { kundliFromNatal } from "@/lib/image/kundliOverlay";
@@ -121,6 +123,8 @@ export async function generateHoroscopeForUser(params: {
   let imageUrlMobile: string | undefined;
   let imageUrlFrame: string | undefined;
   let imagePrompt: string | undefined;
+  let wallpaperSource: WallpaperSource | undefined;
+  let schumannHour: string | undefined;
   try {
     // The astrology-derived key alone keeps the artwork stable across
     // passive reloads within the same day (e.g. the midnight auto-refresh),
@@ -144,6 +148,8 @@ export async function generateHoroscopeForUser(params: {
     imageUrlMobile = image.mobileUrl;
     imageUrlFrame = image.frameUrl;
     imagePrompt = image.prompt;
+    wallpaperSource = image.source;
+    schumannHour = image.schumannHour;
   } catch (err) {
     logGenerationError(userId, "image", err);
     // Text is still valuable without an image -- don't fail the whole request.
@@ -160,6 +166,8 @@ export async function generateHoroscopeForUser(params: {
     imageUrlMobile: imageUrlMobile ?? null,
     imageUrlFrame: imageUrlFrame ?? null,
     imagePrompt: imagePrompt ?? null,
+    wallpaperSource: wallpaperSource ?? null,
+    schumannHour: schumannHour ?? null,
     imageStyle: profile.imageStyle,
     isPreview,
     createdAt: new Date().toISOString(),
@@ -167,6 +175,49 @@ export async function generateHoroscopeForUser(params: {
 
   await redis.set(horoscopeKey(userId, day, isPreview), horoscope, { ex: TTL_SECONDS });
   return horoscope;
+}
+
+/** True when `horoscope`'s wallpaper still shows an earlier hour's Schumann data and can be redrawn. */
+export function needsSchumannRefresh(horoscope: Horoscope): boolean {
+  return Boolean(horoscope.wallpaperSource && horoscope.dailyReading && horoscope.schumannHour !== currentSchumannHour());
+}
+
+/**
+ * The hourly refresh: redraws the stored wallpaper's overlays on its same
+ * artwork with this hour's Schumann data, and swaps in the new image URLs.
+ * The day's reading, luck and artwork are untouched, and it doesn't count
+ * against the daily generation budget. On failure the existing horoscope
+ * is returned as-is.
+ */
+export async function refreshHoroscopeWallpaper(horoscope: Horoscope, desktopRatio?: number): Promise<Horoscope> {
+  if (!horoscope.wallpaperSource || !horoscope.dailyReading) return horoscope;
+  try {
+    const image = await rerenderHoroscopeImage({
+      source: horoscope.wallpaperSource,
+      astrology: horoscope.astrologyData,
+      reading: horoscope.dailyReading,
+      style: horoscope.imageStyle,
+      luckyTheme: horoscope.horoscopeText.luckyTheme,
+      emotionalTheme: horoscope.horoscopeText.overall,
+      desktopRatio,
+    });
+    const refreshed: Horoscope = {
+      ...horoscope,
+      imageUrl: image.url,
+      imageUrlMobile: image.mobileUrl,
+      imageUrlFrame: image.frameUrl,
+      schumannHour: image.schumannHour,
+    };
+    await redis.set(horoscopeKey(horoscope.userId, horoscope.generationDate, horoscope.isPreview), refreshed, { ex: TTL_SECONDS });
+    const superseded = [horoscope.imageUrl, horoscope.imageUrlMobile, horoscope.imageUrlFrame].filter(
+      (url): url is string => Boolean(url) && url !== image.url && url !== image.mobileUrl && url !== image.frameUrl
+    );
+    await deleteGeneratedFiles(superseded);
+    return refreshed;
+  } catch (err) {
+    logGenerationError(horoscope.userId, "image", err);
+    return horoscope;
+  }
 }
 
 function logGenerationError(userId: string, stage: "astrology" | "llm" | "image", err: unknown) {

@@ -3,7 +3,9 @@ import { meanRahuLongitude } from "@/lib/astrology/gochar";
 import { mahadashaOn, vimshottariMahadashas } from "@/lib/astrology/vimshottari";
 import { tropicalToSidereal, normalizeDegrees } from "@/lib/astrology/zodiac";
 import type { KundliData } from "@/lib/astrologyApi";
-import { buildCenteredVectorTextMarkup, measureVectorText, TextStyle } from "./vectorFont";
+import { getPlanetPosition } from "@/lib/astrology/ephemeris";
+import type { PlanetKey } from "@/lib/astrology/constants";
+import { buildCenteredVectorTextMarkup, buildVectorTextMarkup, measureVectorText, TextStyle } from "./vectorFont";
 import { luckMeterTop } from "./luckMeterOverlay";
 import { DEVANAGARI_LABELS } from "./devanagariLabels";
 import { embedChartSvg } from "./chartSvgOutline";
@@ -78,21 +80,86 @@ export function kundliFromNatal(natal: NatalChart): KundliData | null {
  * without recomputing -- and risking drifting out of sync with -- this
  * geometry themselves.
  */
-export function kundliRect(width: number, height: number): { x0: number; y0: number; size: number; gap: number } {
+export function kundliRect(width: number, height: number): { x0: number; y0: number; size: number; gap: number; top: number } {
   const minDim = Math.min(width, height);
   const size = Math.round(minDim * 0.26);
   const gap = Math.round(minDim * 0.015);
   const x0 = Math.round((width - size) / 2);
   const y0 = Math.round(luckMeterTop(width, height) - gap - size);
-  return { x0, y0, size, gap };
+  // `top` includes the caption strip drawn above the chart (see buildKundliMarkup).
+  return { x0, y0, size, gap, top: y0 - Math.round(size * CAPTION_FRACTION) };
 }
 
+const CAPTION_FRACTION = 0.1;
+const MOVED_COLOR = "#ff4d4d";
+
+const GOCHAR_PLANETS: { name: string; key: PlanetKey }[] = [
+  { name: "Sun", key: "sun" },
+  { name: "Moon", key: "moon" },
+  { name: "Mars", key: "mars" },
+  { name: "Mercury", key: "mercury" },
+  { name: "Jupiter", key: "jupiter" },
+  { name: "Venus", key: "venus" },
+  { name: "Saturn", key: "saturn" },
+];
+
+/**
+ * Today's gochar (transit) chart on the person's own kundli: the same
+ * lagna, so the same houses and sign numbers as their birth chart, with
+ * the grahas placed by where they actually are at `at` (sidereal).
+ */
+export function gocharKundli(natal: KundliData, at: Date): KundliData {
+  const rahu = tropicalToSidereal(meanRahuLongitude(at), at);
+  return {
+    ascendantSign: natal.ascendantSign,
+    planets: [
+      ...GOCHAR_PLANETS.map(({ name, key }) => {
+        const position = getPlanetPosition(key, at);
+        return { name, sign: signOf(tropicalToSidereal(position.longitude, at)), retro: position.isRetrograde };
+      }),
+      { name: "Rahu", sign: signOf(rahu), retro: false },
+      { name: "Ketu", sign: signOf(rahu + 180), retro: false },
+    ],
+    mahadashas: null,
+    chartSvg: null,
+    source: "local",
+  };
+}
+
+/**
+ * The wallpaper's kundli: today's gochar on the person's lagna (see
+ * gocharKundli), judged at noon UTC of `onDate` ("YYYY-MM-DD") like the
+ * day's gochar reading. Any graha that changed sign since yesterday also
+ * keeps a red, struck-through label in the house it left. A small caption
+ * strip above says what's shown. The birth chart itself stays in the form.
+ */
 export function buildKundliMarkup(width: number, height: number, kundli: KundliData, onDate: string): string {
-  const { x0, y0, size } = kundliRect(width, height);
-  // Chart only -- the Mahadasha (and any longer reading) stays in the form,
-  // keeping the wallpaper uncluttered. `onDate` is kept for callers.
-  void onDate;
-  return kundliChartMarkup(x0, y0, size, kundli, null);
+  const { x0, y0, size, top } = kundliRect(width, height);
+  const [year, month, day] = onDate.split("-").map(Number);
+  const noon = new Date(Date.UTC(year, month - 1, day, 12));
+  const today = gocharKundli(kundli, noon);
+  const yesterday = gocharKundli(kundli, new Date(noon.getTime() - 86_400_000));
+  const moved = today.planets.some((planet) => yesterday.planets.find((before) => before.name === planet.name)?.sign !== planet.sign);
+
+  const captionHeight = y0 - top;
+  const stroke = Math.max(1.2, size * 0.006);
+  const titleStyle: TextStyle = { color: "#f7c56a", strokeWidth: 0.12, tracking: 0.16 };
+  const legendStyle: TextStyle = { color: MOVED_COLOR, strokeWidth: 0.12, tracking: 0.12 };
+  const title = "TODAY'S GOCHAR";
+  const legend = moved ? "  RED: YESTERDAY" : "";
+  const idealSize = captionHeight * 0.42;
+  const fullWidth = measureVectorText(title, idealSize, titleStyle) + (legend ? measureVectorText(legend, idealSize, legendStyle) : 0);
+  const textSize = Math.min(idealSize, idealSize * ((size * 0.92) / fullWidth));
+  const titleWidth = measureVectorText(title, textSize, titleStyle);
+  const legendWidth = legend ? measureVectorText(legend, textSize, legendStyle) : 0;
+  const textLeft = x0 + (size - titleWidth - legendWidth) / 2;
+  const textTop = top + (captionHeight - textSize) / 2;
+  const caption = `
+  <rect x="${(x0 - stroke).toFixed(1)}" y="${(top - stroke).toFixed(1)}" width="${(size + stroke * 2).toFixed(1)}" height="${(captionHeight + stroke).toFixed(1)}" rx="${(size * 0.02).toFixed(1)}" fill="#080b16" />
+  ${buildVectorTextMarkup(title, textLeft, textTop, textSize, titleStyle)}
+  ${legend ? buildVectorTextMarkup(legend, textLeft + titleWidth, textTop, textSize, legendStyle) : ""}`;
+
+  return caption + kundliChartMarkup(x0, y0, size, today, null, yesterday);
 }
 
 /**
@@ -109,6 +176,8 @@ interface Label {
   text: string; // a DEVANAGARI_LABELS key
   retro: boolean;
   color: string;
+  /** Drawn struck through: where a graha was yesterday, before it moved. */
+  struck?: boolean;
 }
 
 /** One Nepali label (optionally in retrograde parentheses) centered on `cx`, cap-top at `top`. */
@@ -127,11 +196,19 @@ function devanagariLabelMarkup(label: Label, cx: number, top: number, fontSize: 
     label.retro ? buildCenteredVectorTextMarkup("(", left + parenWidth / 2, parenTop, parenSize, parenStyle) : "",
     `<path d="${glyph.d}" fill="${label.color}" transform="translate(${(left + parenWidth).toFixed(1)} ${baseline.toFixed(1)}) scale(${fontSize.toFixed(2)})" />`,
     label.retro ? buildCenteredVectorTextMarkup(")", left + parenWidth + textWidth + parenWidth / 2, parenTop, parenSize, parenStyle) : "",
+    label.struck
+      ? `<line x1="${(left - fontSize * 0.12).toFixed(1)}" y1="${(top + fontSize * 0.45).toFixed(1)}" x2="${(left + textWidth + parenWidth * 2 + fontSize * 0.12).toFixed(1)}" y2="${(top + fontSize * 0.45).toFixed(1)}" stroke="${label.color}" stroke-width="${(fontSize * 0.1).toFixed(1)}" stroke-linecap="round" />`
+      : "",
   ].join("");
 }
 
-/** A North-Indian kundli filling the `size`-sided square at (x0, y0), plus the optional Mahadasha header above it. */
-function kundliChartMarkup(x0: number, y0: number, size: number, kundli: KundliData, onDate: string | null): string {
+/**
+ * A North-Indian kundli filling the `size`-sided square at (x0, y0), plus
+ * the optional Mahadasha header above it. With `previous` (the same chart
+ * a day earlier), each graha whose sign changed also gets a red,
+ * struck-through label in the house it was in.
+ */
+function kundliChartMarkup(x0: number, y0: number, size: number, kundli: KundliData, onDate: string | null, previous?: KundliData): string {
   const P = (fx: number, fy: number) => `${(x0 + fx * size).toFixed(1)} ${(y0 + fy * size).toFixed(1)}`;
 
   const stroke = Math.max(1.2, size * 0.006);
@@ -155,6 +232,12 @@ function kundliChartMarkup(x0: number, y0: number, size: number, kundli: KundliD
     // planets get the (retrograde) parentheses.
     const retro = planet.retro && planet.name !== "Rahu" && planet.name !== "Ketu";
     byHouse[house].push({ text, retro, color: "#fdf6e6" });
+  }
+  for (const before of previous?.planets ?? []) {
+    const text = NEPALI_LABELS[before.name];
+    const now = kundli.planets.find((planet) => planet.name === before.name);
+    if (!text || !now || now.sign === before.sign) continue;
+    byHouse[(before.sign - kundli.ascendantSign + 12) % 12].push({ text, retro: false, color: MOVED_COLOR, struck: true });
   }
 
   const labels = byHouse

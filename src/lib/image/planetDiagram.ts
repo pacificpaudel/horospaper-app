@@ -1,5 +1,6 @@
 import { StructuredAstrologyData } from "@/lib/astrology";
 import { DiagramPlanet, planetBodyMarkup } from "./planetBodies";
+import { shapeDevanagariText } from "./devanagariShaper";
 
 type Corner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
 
@@ -98,13 +99,62 @@ function diagramGroup(spec: DiagramSpec, x: number, y: number, size: number, ast
  * be cover-cropped elsewhere.
  */
 export function buildPlanetDiagramsMarkup(astrology: StructuredAstrologyData, width: number, height: number, flush = false): string {
+  return diagramBoxes(width, height, flush)
+    .map(({ spec, x, y, size }, i) => diagramGroup(spec, x, y, size, astrology, `pd${i}`))
+    .join("");
+}
+
+function diagramBoxes(width: number, height: number, flush: boolean): { spec: DiagramSpec; x: number; y: number; size: number }[] {
   const size = Math.max(100, Math.min(190, Math.round(Math.min(width, height) * 0.17)));
   const isPortrait = height > width;
   const margin = isPortrait && !flush ? Math.round(Math.min(width, height) * 0.12) : 0;
+  return DIAGRAMS.map((spec) => ({
+    spec,
+    x: spec.corner.endsWith("left") ? margin : width - margin - size,
+    y: spec.corner.startsWith("top") ? margin : height - margin - size,
+    size,
+  }));
+}
 
-  return DIAGRAMS.map((spec, i) => {
-    const x = spec.corner.endsWith("left") ? margin : width - margin - size;
-    const y = spec.corner.startsWith("top") ? margin : height - margin - size;
-    return diagramGroup(spec, x, y, size, astrology, `pd${i}`);
-  }).join("");
+const NEPALI_NAMES: Record<DiagramPlanet, string> = {
+  sun: "सुर्य",
+  moon: "चन्द्रमा",
+  saturn: "शनी",
+  mars: "मंगल",
+};
+
+/**
+ * Each corner diagram's planet name in Nepali: below the top two, above
+ * the bottom two, on a small dark pill. Aligned to the diagram's outer
+ * edge rather than centered, so the bottom-right name stays clear of the
+ * Panchang panel, which can overlap that diagram's inner side. Async:
+ * real HarfBuzz-shaped Devanagari (see devanagariShaper.ts).
+ */
+export async function buildPlanetNamesMarkup(width: number, height: number, flush = false): Promise<string> {
+  const boxes = diagramBoxes(width, height, flush);
+  const shaped = await Promise.all(boxes.map(({ spec }) => shapeDevanagariText(NEPALI_NAMES[spec.planet])));
+  return boxes
+    .map(({ spec, x, y, size }, i) => {
+      const fontSize = size * 0.15;
+      const textWidth = shaped[i].width * fontSize;
+      const padX = fontSize * 0.45;
+      const pillH = fontSize * 1.35;
+      const inset = size * 0.06;
+      const gap = size * 0.04;
+      let left = spec.corner.endsWith("left") ? x + inset : x + size - inset - textWidth - padX * 2;
+      // The Panchang panel reaches right up to `width - size` (see
+      // panchangOverlay.ts's rightLimit) -- start past it, even if that
+      // runs the pill a little beyond the diagram's own right edge.
+      if (spec.corner === "bottom-right") left = Math.max(left, width - size + inset * 0.5);
+      const top = spec.corner.startsWith("top") ? y + size + gap : y - gap - pillH;
+      // Noto Sans Devanagari's headline sits ~0.72 em above the baseline;
+      // the extra 0.1 em centers the matras' descent in the pill.
+      const baseline = top + (pillH - fontSize) / 2 + fontSize * 0.82;
+      return `
+  <g>
+    <rect x="${left.toFixed(1)}" y="${top.toFixed(1)}" width="${(textWidth + padX * 2).toFixed(1)}" height="${pillH.toFixed(1)}" rx="${(pillH / 2).toFixed(1)}" fill="#0b1220" fill-opacity="0.62" />
+    <path d="${shaped[i].d}" fill="#fdf6e6" transform="translate(${(left + padX).toFixed(1)} ${baseline.toFixed(1)}) scale(${fontSize.toFixed(2)})" />
+  </g>`;
+    })
+    .join("");
 }

@@ -1,8 +1,10 @@
 import { ImageStyle } from "@/types/enums";
 import { StructuredAstrologyData } from "@/lib/astrology";
-import { buildPlanetDiagramsMarkup } from "./planetDiagram";
+import { buildPlanetDiagramsMarkup, buildPlanetNamesMarkup } from "./planetDiagram";
 import { buildLuckMeterMarkup } from "./luckMeterOverlay";
-import { buildDateHeaderMarkup } from "./dateHeaderOverlay";
+import { buildDateHeaderMarkup, dateHeaderBottom } from "./dateHeaderOverlay";
+import { buildSchumannMarkup } from "./schumannOverlay";
+import type { SchumannSnapshot } from "@/lib/schumann";
 import { DailyIntent } from "./dailyIntent";
 import { buildGalaxyMarkup } from "./galaxyOverlay";
 import { buildKundliMarkup } from "./kundliOverlay";
@@ -65,6 +67,7 @@ export async function generateMockHoroscopeImageSvg(opts: {
   moonIllumination?: number;
   target?: { width: number; height: number };
   flushPlanets?: boolean;
+  schumann?: SchumannSnapshot | null;
 }): Promise<string> {
   const rand = mulberry32(hashSeed(opts.seed));
   const [, bg2, accent] = PALETTES[opts.style];
@@ -134,18 +137,17 @@ export async function generateMockHoroscopeImageSvg(opts: {
   const targetWidth = opts.target?.width ?? WIDTH;
   const targetHeight = opts.target?.height ?? HEIGHT;
   const planetDiagrams = astrology ? buildPlanetDiagramsMarkup(astrology, targetWidth, targetHeight, opts.flushPlanets) : "";
-  const panchangMarkup = await buildPanchangMarkup(targetWidth, targetHeight, opts.panchang ?? null);
+  const planetNames = astrology ? await buildPlanetNamesMarkup(targetWidth, targetHeight, opts.flushPlanets) : "";
+  const generationDate = astrology?.generationDate ?? dateOnlyString(new Date());
+  const schumannOverlay = buildSchumannMarkup(targetWidth, targetHeight, dateHeaderBottom(targetWidth, targetHeight, generationDate, opts.intent), opts.schumann);
+  const panchangMarkup = await buildPanchangMarkup(targetWidth, targetHeight, opts.panchang ?? null, schumannOverlay.clearY);
   const luckMeter =
-    (opts.kundli ? buildKundliMarkup(targetWidth, targetHeight, opts.kundli, astrology?.generationDate ?? dateOnlyString(new Date())) : "") +
+    (opts.kundli ? buildKundliMarkup(targetWidth, targetHeight, opts.kundli, generationDate) : "") +
     panchangMarkup +
-    buildLuckMeterMarkup(targetWidth, targetHeight, opts.luckScore);
-  const galaxy = buildGalaxyMarkup(targetWidth, targetHeight, astrology?.generationDate ?? dateOnlyString(new Date()));
-  const dateHeader = buildDateHeaderMarkup(
-    targetWidth,
-    targetHeight,
-    astrology?.generationDate ?? dateOnlyString(new Date()),
-    opts.intent
-  );
+    buildLuckMeterMarkup(targetWidth, targetHeight, opts.luckScore) +
+    planetNames;
+  const galaxy = buildGalaxyMarkup(targetWidth, targetHeight, generationDate);
+  const dateHeader = buildDateHeaderMarkup(targetWidth, targetHeight, generationDate, opts.intent) + schumannOverlay.markup;
 
   const artwork = `<defs>
     <linearGradient id="paper" x1="0" y1="0" x2="1" y2="1">

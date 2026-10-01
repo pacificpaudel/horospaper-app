@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/session";
 import { getBirthProfile } from "@/lib/profile";
-import { generateHoroscopeForUser, getExistingHoroscope, HoroscopeGenerationError } from "@/lib/horoscope";
+import {
+  generateHoroscopeForUser,
+  getExistingHoroscope,
+  HoroscopeGenerationError,
+  needsSchumannRefresh,
+  refreshHoroscopeWallpaper,
+} from "@/lib/horoscope";
 import { canConsumeGeneration, consumeGeneration, getFreeLimit, getUsageCount } from "@/lib/usage";
 import { todayForTimezone } from "@/lib/timezoneDay";
 import { isValidTimeZone } from "@/lib/validation";
@@ -47,7 +53,11 @@ export async function POST(request: NextRequest) {
   // serving a wallpaper with the old always-"joyful" reading.
   const legacy = Boolean(existing && !existing.dailyReading);
   if (existing && !refresh && !legacy) {
-    return NextResponse.json({ horoscope: existing, cached: true });
+    // The hourly check-in: same day's horoscope, but its wallpaper's live
+    // Schumann gauge + graph are redrawn once a new hour's data is out.
+    // Free -- not counted against the daily generation budget.
+    const horoscope = needsSchumannRefresh(existing) ? await refreshHoroscopeWallpaper(existing, desktopRatio) : existing;
+    return NextResponse.json({ horoscope, cached: true });
   }
 
   // Scoped to targetDate (the user's own local day), matching the horoscope
