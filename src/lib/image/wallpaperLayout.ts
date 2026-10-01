@@ -170,6 +170,9 @@ export async function layoutWallpaper(params: {
     gaugeBottom = gocharLayout.caption.y - gap * 2;
   }
   const d = score != null ? Math.min(minDim * GAUGE_FRACTION, gaugeBottom - startY) : 0;
-  const gauge = d >= minDim * 0.05 ? { cx: width / 2, cy: startY + d / 2, d } : null;
+  // At the middle of the image, kept clear of the header above and the
+  // gochar block below.
+  const cy = Math.min(Math.max(height / 2, startY + d / 2), gaugeBottom - d / 2);
+  const gauge = d >= minDim * 0.05 ? { cx: width / 2, cy, d } : null;
   return { gauge, gochar: gocharLayout };
 }

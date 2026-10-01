@@ -1,5 +1,4 @@
 import { buildCenteredVectorTextMarkup, measureVectorText, TextStyle } from "./vectorFont";
-import { DailyIntent } from "./dailyIntent";
 
 const WEEKDAYS = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
 const MONTHS = [
@@ -63,8 +62,8 @@ function panelRect(contentWidth: number, centerX: number, top: number, bottom: n
  * any photo, not just the ones dark enough for colored strokes to show up
  * well on their own.
  *
- * When `intent` is given (the day's astronomically-derived mood + light,
- * from deriveDailyIntent), a second, separate panel is drawn just below the
+ * When `tags` are given (the day's tags -- one per luck source, see
+ * dailyReading.ts), a second, separate panel is drawn just below the
  * date -- same vector font and proportions as the date line, in gold
  * instead of blue, reading as a distinct "today's intent" callout rather
  * than part of the date itself.
@@ -73,7 +72,7 @@ export interface DateHeader {
   markup: string;
   /** The weekday + date panel. */
   dateBox: { x: number; y: number; w: number; h: number };
-  /** Bottom and right edges of everything drawn (the tags panel when `intent` is given). */
+  /** Bottom and right edges of everything drawn (the tags panel when `tags` are given). */
   bottom: number;
   right: number;
 }
@@ -83,15 +82,11 @@ export interface DateHeader {
  * tags panel, for something drawn right under the date (the Schumann
  * graph -- see compositeOverlay.ts).
  */
-export function buildDateHeader(width: number, height: number, generationDate: string, intent?: DailyIntent, insertHeight = 0): DateHeader {
-  return dateHeaderLayout(width, height, generationDate, intent, insertHeight);
+export function buildDateHeader(width: number, height: number, generationDate: string, tags?: string[], insertHeight = 0): DateHeader {
+  return dateHeaderLayout(width, height, generationDate, tags, insertHeight);
 }
 
-export function buildDateHeaderMarkup(width: number, height: number, generationDate: string, intent?: DailyIntent): string {
-  return dateHeaderLayout(width, height, generationDate, intent).markup;
-}
-
-function dateHeaderLayout(width: number, height: number, generationDate: string, intent?: DailyIntent, insertHeight = 0): DateHeader {
+function dateHeaderLayout(width: number, height: number, generationDate: string, tags?: string[], insertHeight = 0): DateHeader {
   const { weekday, dateLine } = describeDate(generationDate);
   const minDim = Math.min(width, height);
   const centerX = width / 2;
@@ -123,18 +118,29 @@ function dateHeaderLayout(width: number, height: number, generationDate: string,
   ];
 
   let bottom = backdropBottom + insertHeight;
-  if (intent) {
-    const intentText = `${intent.mood} · ${intent.theme}`.toUpperCase();
+  if (tags?.length) {
     const intentStyle: TextStyle = { ...dateStyle, color: "#f7c56a" };
-    const intentSize = fitSize(intentText, dateSize, safeWidth, intentStyle);
+    // One line, except on a landscape canvas when it would run much wider
+    // than the date panel: then two tags per line, so the header block
+    // stays narrow enough for the gochar column beside it.
+    const oneLine = tags.join(" · ").toUpperCase();
+    const lines =
+      width > height && tags.length > 2 && measureVectorText(oneLine, dateSize, intentStyle) > dateBox.w * 1.15
+        ? [tags.slice(0, 2), tags.slice(2)].map((pair) => pair.join(" · ").toUpperCase())
+        : [oneLine];
+    const intentSize = Math.min(...lines.map((line) => fitSize(line, dateSize, safeWidth, intentStyle)));
+    const lineGap = intentSize * 0.9;
     const intentY = bottom + Math.round(intentSize * 1.4);
     const intentPadTop = Math.round(intentSize * 1.1);
     const intentPadBottom = Math.round(intentSize * 1.1);
-    const intentWidth = measureVectorText(intentText, intentSize, intentStyle);
-    bottom = intentY + intentSize + intentPadBottom;
+    const intentWidth = Math.max(...lines.map((line) => measureVectorText(line, intentSize, intentStyle)));
+    bottom = intentY + lines.length * intentSize + (lines.length - 1) * lineGap + intentPadBottom;
     right = Math.max(right, centerX + intentWidth / 2 + Math.round(intentSize * 1.3));
     const intentPanel = panelRect(intentWidth, centerX, intentY - intentPadTop, bottom, intentSize);
-    markup.push(intentPanel, buildCenteredVectorTextMarkup(intentText, centerX, intentY, intentSize, intentStyle));
+    markup.push(
+      intentPanel,
+      ...lines.map((line, i) => buildCenteredVectorTextMarkup(line, centerX, intentY + i * (intentSize + lineGap), intentSize, intentStyle))
+    );
   }
 
   return { markup: markup.join(""), dateBox, bottom, right };

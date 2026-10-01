@@ -61,6 +61,8 @@ export async function generateMockHoroscopeImageSvg(opts: {
   target?: { width: number; height: number };
   flushPlanets?: boolean;
   schumann?: SchumannView | null;
+  tags?: string[];
+  zodiacSign?: string;
 }): Promise<string> {
   const rand = mulberry32(hashSeed(opts.seed));
   const [, bg2, accent] = PALETTES[opts.style];
@@ -135,7 +137,8 @@ export async function generateMockHoroscopeImageSvg(opts: {
         width: targetWidth,
         height: targetHeight,
         astrology,
-        intent: opts.intent,
+        tags: opts.tags ?? (opts.intent ? [opts.intent.mood, opts.intent.theme] : undefined),
+        zodiacSign: opts.zodiacSign,
         luckScore: opts.luckScore,
         kundli: opts.kundli,
         panchang: opts.panchang ?? null,

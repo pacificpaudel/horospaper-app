@@ -29,7 +29,7 @@ const ASCENDANT_LABEL = "लग्न";
 // the chart's inner vertices.
 const HOUSES: { label: [number, number]; num: [number, number] }[] = [
   { label: [0.5, 0.25], num: [0.5, 0.44] },
-  { label: [0.25, 0.1], num: [0.25, 0.2] },
+  { label: [0.25, 0.115], num: [0.25, 0.2] },
   { label: [0.1, 0.25], num: [0.2, 0.25] },
   { label: [0.25, 0.5], num: [0.44, 0.5] },
   { label: [0.1, 0.75], num: [0.2, 0.75] },
@@ -39,7 +39,28 @@ const HOUSES: { label: [number, number]; num: [number, number] }[] = [
   { label: [0.9, 0.75], num: [0.8, 0.75] },
   { label: [0.75, 0.5], num: [0.56, 0.5] },
   { label: [0.9, 0.25], num: [0.8, 0.25] },
-  { label: [0.75, 0.1], num: [0.75, 0.2] },
+  { label: [0.75, 0.115], num: [0.75, 0.2] },
+];
+
+// Where each house's numbered house icon sits (fractions of the chart's
+// side), houses 1-12: in the upper part of each section where it's wide
+// enough. Houses 6 and 8 (the bottom triangles) narrow to a point at the
+// top, where their rashi number already sits, so theirs go in the lower
+// outer corner instead; house 7's top is likewise taken by its rashi.
+const ICON_H = 0.07;
+const HOUSE_ICONS: [number, number][] = [
+  [0.5, 0.06],
+  [0.25, 0.045],
+  [0.045, 0.15],
+  [0.25, 0.33],
+  [0.045, 0.65],
+  [0.1, 0.955],
+  [0.5, 0.64],
+  [0.9, 0.955],
+  [0.955, 0.65],
+  [0.75, 0.33],
+  [0.955, 0.15],
+  [0.75, 0.045],
 ];
 
 const signOf = (longitude: number) => Math.floor(normalizeDegrees(longitude) / 30) + 1;
@@ -124,6 +145,17 @@ interface Label {
 }
 
 /** One Nepali label (optionally in retrograde parentheses) centered on `cx`, cap-top at `top`. */
+/** Houses 2, 6, 8 and 12 (0-based): triangles wide enough to set labels side by side. */
+const WIDE_HOUSES = new Set([1, 5, 7, 11]);
+
+/** A label's drawn width, including retrograde parentheses -- matches devanagariLabelMarkup. */
+function labelWidth(label: Label, fontSize: number): number {
+  const glyph = DEVANAGARI_LABELS[label.text];
+  if (!glyph) return 0;
+  const parenWidth = label.retro ? measureVectorText("(", fontSize * 0.62, { strokeWidth: 0.1, tracking: 0 }) + fontSize * 0.04 : 0;
+  return glyph.width * fontSize + parenWidth * 2;
+}
+
 function devanagariLabelMarkup(label: Label, cx: number, top: number, fontSize: number): string {
   const glyph = DEVANAGARI_LABELS[label.text];
   if (!glyph) return "";
@@ -162,8 +194,9 @@ export function kundliChartMarkup(x0: number, y0: number, size: number, kundli: 
   ];
 
   const fontSize = size * 0.072;
-  const numberSize = size * 0.032;
-  const numberStyle: TextStyle = { color: "#9aa6c8", strokeWidth: 0.14, tracking: 0.1 };
+  const numberSize = size * 0.03;
+  const numberStyle: TextStyle = { color: "#f7c56a", strokeWidth: 0.15, tracking: 0.06 };
+  const houseNumberStyle: TextStyle = { color: "#e6e9f0", strokeWidth: 0.16, tracking: 0.06 };
 
   const byHouse: Label[][] = HOUSES.map(() => []);
   byHouse[0].push({ text: ASCENDANT_LABEL, retro: false, color: "#f7c56a" });
@@ -189,11 +222,29 @@ export function kundliChartMarkup(x0: number, y0: number, size: number, kundli: 
     .map((entries, i) => {
       const [fx, fy] = HOUSES[i].label;
       const lineHeight = fontSize * 1.08;
-      const top = y0 + fy * size - (entries.length * lineHeight) / 2 + fontSize * 0.05;
-      return entries
-        .map((entry, row) => {
-          if (entry.planet) centers.set(`${entry.planet}:${entry.struck ? "was" : "now"}`, [x0 + fx * size, top + row * lineHeight + fontSize * 0.45]);
-          return devanagariLabelMarkup(entry, x0 + fx * size, top + row * lineHeight, fontSize);
+      // Never above the house's own icon when that sits over the labels.
+      const iconFy = HOUSE_ICONS[i][1];
+      const belowIcon = iconFy < fy ? y0 + (iconFy + ICON_H / 2 + 0.008) * size : -Infinity;
+      // The wide, shallow triangles (houses 2, 6, 8, 12) put labels side by
+      // side, two to a row; the others stack them one per line.
+      const perRow = WIDE_HOUSES.has(i) ? 2 : 1;
+      const rows: Label[][] = [];
+      for (let k = 0; k < entries.length; k += perRow) rows.push(entries.slice(k, k + perRow));
+      const top = Math.max(y0 + fy * size - (rows.length * lineHeight) / 2 + fontSize * 0.05, belowIcon);
+      return rows
+        .map((rowEntries, row) => {
+          const widths = rowEntries.map((entry) => labelWidth(entry, fontSize));
+          const gap = fontSize * 0.45;
+          let x = x0 + fx * size - (widths.reduce((sum, w) => sum + w, 0) + gap * (widths.length - 1)) / 2;
+          return rowEntries
+            .map((entry, k) => {
+              const cx = x + widths[k] / 2;
+              x += widths[k] + gap;
+              const y = top + row * lineHeight;
+              if (entry.planet) centers.set(`${entry.planet}:${entry.struck ? "was" : "now"}`, [cx, y + fontSize * 0.45]);
+              return devanagariLabelMarkup(entry, cx, y, fontSize);
+            })
+            .join("");
         })
         .join("");
     })
@@ -225,9 +276,32 @@ export function kundliChartMarkup(x0: number, y0: number, size: number, kundli: 
     })
     .join("");
 
+  // Rashi (sign) number of each house, in a gold circle near the chart's
+  // center, where the North-Indian chart traditionally writes it.
+  const circleR = size * 0.03;
+  const lineW = Math.max(1, size * 0.004);
   const numbers = HOUSES.map(({ num: [fx, fy] }, i) => {
     const sign = ((kundli.ascendantSign - 1 + i) % 12) + 1;
-    return buildCenteredVectorTextMarkup(String(sign), x0 + fx * size, y0 + fy * size - numberSize / 2, numberSize, numberStyle);
+    const cx = x0 + fx * size;
+    const cy = y0 + fy * size;
+    return `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${circleR.toFixed(1)}" fill="#080b16" stroke="#f7c56a" stroke-width="${lineW.toFixed(1)}" />${buildCenteredVectorTextMarkup(String(sign), cx, cy - numberSize / 2, numberSize, numberStyle)}`;
+  }).join("");
+
+  // House number of each house, in a small house-shaped icon in its own
+  // section (house 1 is always the top diamond, counter-clockwise from there).
+  const iconW = size * 0.068;
+  const iconH = size * ICON_H;
+  const roofH = iconH * 0.42;
+  const houseNumberSize = size * 0.029;
+  const houseIcons = HOUSE_ICONS.map(([fx, fy], i) => {
+    const cx = x0 + fx * size;
+    const top = y0 + fy * size - iconH / 2;
+    const left = (cx - iconW / 2).toFixed(1);
+    const right = (cx + iconW / 2).toFixed(1);
+    const eave = top + roofH;
+    const bottom = top + iconH;
+    const shape = `M${cx.toFixed(1)} ${top.toFixed(1)} L${right} ${eave.toFixed(1)} L${right} ${bottom.toFixed(1)} L${left} ${bottom.toFixed(1)} L${left} ${eave.toFixed(1)} Z`;
+    return `<path d="${shape}" fill="#080b16" stroke="#c9cfdc" stroke-width="${lineW.toFixed(1)}" stroke-linejoin="round" />${buildCenteredVectorTextMarkup(String(i + 1), cx, (eave + bottom) / 2 - houseNumberSize / 2, houseNumberSize, houseNumberStyle)}`;
   }).join("");
 
   // Header strip: "CURRENT MAHADASHA" over e.g. "SUN (2023-2029)".
@@ -261,6 +335,7 @@ export function kundliChartMarkup(x0: number, y0: number, size: number, kundli: 
     ${header}
     <rect x="${x0}" y="${y0}" width="${size}" height="${size}" fill="none" stroke="#f7c56a" stroke-width="${stroke.toFixed(1)}" />
     <path d="${lines.join(" ")}" fill="none" stroke="#f7c56a" stroke-opacity="0.85" stroke-width="${stroke.toFixed(1)}" />
+    ${houseIcons}
     ${numbers}
     ${labels}
     ${moves}

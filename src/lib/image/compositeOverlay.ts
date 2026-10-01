@@ -6,9 +6,15 @@ import { Box, buildGaugeMarkup, buildGraphMarkup, graphHeightFor, graphLabelSize
 import { buildGalaxyMarkup } from "./galaxyOverlay";
 import { buildGocharMarkup } from "./gocharOverlay";
 import { layoutWallpaper } from "./wallpaperLayout";
-import type { DailyIntent } from "./dailyIntent";
+import { isZodiacSign, ZODIAC_BADGE, zodiacIconMarkup, ZodiacSign } from "./zodiacIcons";
+import { buildCenteredVectorTextMarkup, TextStyle } from "./vectorFont";
 import type { KundliData } from "@/lib/astrologyApi";
 import { DailyReading } from "@/lib/dailyReading";
+
+/** The tags a reading shows: its 4 (one per luck source), or the older mood + theme pair. */
+export function readingTags(reading: DailyReading): string[] {
+  return reading.tags?.length ? reading.tags.map((t) => t.tag) : [reading.intent.mood, reading.intent.theme];
+}
 
 export interface TargetCanvas {
   width: number;
@@ -28,14 +34,17 @@ export async function buildOverlayLayers(params: {
   width: number;
   height: number;
   astrology: StructuredAstrologyData;
-  intent?: DailyIntent;
+  /** The day's tags (see dailyReading.ts), shown under the date. */
+  tags?: string[];
+  /** The person's rashi as a western sign name ("Scorpio"), drawn as a badge under the tags. */
+  zodiacSign?: string;
   luckScore: number;
   kundli?: KundliData | null;
   panchang: DailyReading["panchang"];
   flush?: boolean;
   schumann?: SchumannView | null;
 }): Promise<string> {
-  const { width, height, astrology, intent, kundli, schumann } = params;
+  const { width, height, astrology, tags, kundli, schumann } = params;
   const flush = Boolean(params.flush);
   const date = astrology.generationDate;
   const gap = Math.round(Math.min(width, height) * 0.015);
@@ -45,31 +54,71 @@ export async function buildOverlayLayers(params: {
   // The Schumann graph sits right under the weekday/date panel, exactly as
   // wide as it -- narrowed only where it would run into a top corner
   // diagram (or its name) -- with the 2 tags moving down below it.
+  const dateBox = buildDateHeader(width, height, date).dateBox;
+  const topBoxes = diagramBoxes(width, height, flush).filter((b) => b.spec.corner.startsWith("top"));
   let graphBox: Box | null = null;
   if (graph) {
-    const dateBox = buildDateHeader(width, height, date).dateBox;
     const y = dateBox.y + dateBox.h + gap;
     let x0 = dateBox.x;
     let x1 = dateBox.x + dateBox.w;
-    for (const box of diagramBoxes(width, height, flush).filter((b) => b.spec.corner.startsWith("top"))) {
+    for (const box of topBoxes) {
       if (diagramZone(box).bottom <= y) continue;
       if (box.spec.corner === "top-left") x0 = Math.max(x0, box.x + box.size + gap);
       else x1 = Math.min(x1, box.x - gap);
     }
     graphBox = { x: x0, y, w: x1 - x0, h: graphHeightFor(x1 - x0, graph) };
   }
-  const header = buildDateHeader(width, height, date, intent, graphBox ? graphBox.h + gap * 2 : 0);
+  const header = buildDateHeader(width, height, date, tags, graphBox ? graphBox.h + gap * 2 : 0);
+
+  // The calmness gauge and the person's zodiac sign sit either side of the
+  // weekday/date panel -- the gauge between it and the Sun diagram, the sign
+  // between it and the Moon diagram -- when those gaps are wide enough (frame
+  // and desktop). Otherwise (the inset mobile canvas) the sign goes under
+  // the tags and the gauge to the middle of the image (wallpaperLayout.ts).
+  const minDim = Math.min(width, height);
+  const sun = topBoxes.find((b) => b.spec.corner === "top-left")!;
+  const moon = topBoxes.find((b) => b.spec.corner === "top-right")!;
+  const leftGap = { x0: sun.x + sun.size + gap, x1: dateBox.x - gap };
+  const rightGap = { x0: dateBox.x + dateBox.w + gap, x1: moon.x - gap };
+  const sideD = Math.min(leftGap.x1 - leftGap.x0, rightGap.x1 - rightGap.x0, dateBox.h, minDim * 0.17);
+  const besideDate = sideD >= minDim * 0.08;
+  const rowCy = dateBox.y + dateBox.h / 2;
+
+  const nameSize = minDim * 0.016;
+  const nameStyle: TextStyle = { color: "#f7c56a", strokeWidth: 0.11, tracking: 0.3 };
+  const zodiacBadge = (cx: number, top: number, d: number, sign: ZodiacSign) =>
+    `<svg x="${(cx - d / 2).toFixed(1)}" y="${top.toFixed(1)}" width="${d.toFixed(1)}" height="${d.toFixed(1)}" viewBox="0 0 120 120"><circle cx="60" cy="60" r="58" fill="${ZODIAC_BADGE}" fill-opacity="0.92" /><g transform="translate(10 10)">${zodiacIconMarkup(sign)}</g></svg>` +
+    buildCenteredVectorTextMarkup(sign.toUpperCase(), cx, top + d + nameSize * 0.7, nameSize, nameStyle);
+
+  let headerBottom = header.bottom;
+  let zodiacMarkup = "";
+  let sideGauge = "";
+  const sign = params.zodiacSign && isZodiacSign(params.zodiacSign) ? params.zodiacSign : null;
+  if (besideDate) {
+    if (score !== null) sideGauge = buildGaugeMarkup((leftGap.x0 + leftGap.x1) / 2, rowCy, sideD, score);
+    if (sign) {
+      // Badge plus its name below, together centered on the date panel.
+      const d = Math.min(sideD, dateBox.h - nameSize * 1.7);
+      zodiacMarkup = zodiacBadge((rightGap.x0 + rightGap.x1) / 2, rowCy - (d + nameSize * 1.7) / 2, d, sign);
+    }
+  } else if (sign) {
+    const d = minDim * 0.085;
+    const top = header.bottom + gap;
+    zodiacMarkup = zodiacBadge(width / 2, top, d, sign);
+    headerBottom = top + d + nameSize * 1.7;
+  }
 
   const [layout, planetNames] = await Promise.all([
     layoutWallpaper({
       width,
       height,
-      headerBottom: header.bottom,
+      headerBottom,
       headerRight: Math.max(header.right, graphBox ? graphBox.x + graphBox.w : 0),
       flush,
       hasKundli: Boolean(kundli),
       panchang: params.panchang,
-      score,
+      // Already drawn beside the date panel when there's room there.
+      score: besideDate ? null : score,
     }),
     buildPlanetNamesMarkup(width, height, flush),
   ]);
@@ -78,8 +127,9 @@ export async function buildOverlayLayers(params: {
     buildPlanetDiagramsMarkup(astrology, width, height, flush),
     planetNames,
     header.markup,
+    zodiacMarkup,
     graphBox && graph && schumann ? buildGraphMarkup(graphBox, graph, graphLabelSize(graphBox.w), schumann) : "",
-    layout.gauge && score != null ? buildGaugeMarkup(layout.gauge.cx, layout.gauge.cy, layout.gauge.d, score) : "",
+    sideGauge || (layout.gauge && score != null ? buildGaugeMarkup(layout.gauge.cx, layout.gauge.cy, layout.gauge.d, score) : ""),
     layout.gochar && kundli ? buildGocharMarkup(layout.gochar, kundli, date) : "",
     buildLuckMeterMarkup(width, height, params.luckScore),
   ].join("");
@@ -122,7 +172,8 @@ export async function withWallpaperOverlay(
     width,
     height,
     astrology,
-    intent: reading.intent,
+    tags: readingTags(reading),
+    zodiacSign: reading.rashi?.sign,
     luckScore: reading.luckScore,
     kundli: reading.kundli,
     panchang: reading.panchang,

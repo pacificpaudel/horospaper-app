@@ -10,11 +10,12 @@ import { generateJson } from "@/lib/llm/generateHoroscope";
 import { DailyIntent, isThemeTag, MoodTag, THEME_TAGS, ThemeTag } from "@/lib/image/dailyIntent";
 import type { KundliData } from "@/lib/astrologyApi";
 import { fetchPanchang, panchangCacheKey, PanchangData } from "@/lib/panchang";
+import { schumannLevel } from "@/lib/schumann";
 import { getPanchangInsight, PanchangInsight } from "@/lib/panchangInsight";
 
 /**
  * Everything the wallpaper needs about "today" for one person: the luck
- * percentage and the day's 2 tags, plus how they were arrived at. Stored
+ * percentage and the day's 4 tags, plus how they were arrived at. Stored
  * on the Horoscope so the client, the overlays and the image search all
  * read the same numbers instead of each re-deriving them.
  */
@@ -36,6 +37,21 @@ export interface DailyReading {
     summary: string | null;
     method: "llm" | "keywords";
   } | null;
+  /**
+   * The day's 4 tags, one per luck source -- planets (the Moon's transit
+   * house), rashifal, Panchang and Schumann calmness -- shown on the
+   * wallpaper. A source that's unavailable today has no tag. Absent on
+   * readings stored before the 4-tag change (the wallpaper then shows
+   * `intent`'s 2 tags).
+   */
+  tags?: ReadingTag[];
+  /** The Schumann calmness score (0-100) the luck % was computed with, if any. */
+  schumannScore?: number | null;
+}
+
+export interface ReadingTag {
+  source: "planets" | "rashifal" | "panchang" | "schumann";
+  tag: string;
 }
 
 // --- Rashifal summarization ------------------------------------------------
@@ -189,16 +205,63 @@ export function moodFor(luck: number, externalSentiment: number | null, planetar
 }
 
 /**
- * Planets always carry 60% (computed for this person's own chart). The
- * remaining 40% is split evenly between whichever of the shared per-rashi
- * Hamro Patro rashifal and today's Panchang (freeastroapi.com) are
- * available -- e.g. 60/40 with just one, 60/20/20 with both, 100% planets
- * with neither.
+ * Today's luck from up to 4 sources, each -1 (unfavorable) .. 1
+ * (favorable): planets (computed for this person's own chart) carry 40%;
+ * the shared per-rashi Hamro Patro rashifal, today's Panchang
+ * (freeastroapi.com) and the Schumann calmness carry 20% each. A source
+ * that's unavailable drops out and the rest are reweighted -- 100%
+ * planets with none of the others.
  */
-export function combineLuck(planetaryScore: number, rashifalSentiment: number | null, panchangSentiment: number | null = null): number {
-  const secondary = [rashifalSentiment, panchangSentiment].filter((s): s is number => s !== null);
-  const combined = secondary.length === 0 ? planetaryScore : planetaryScore * 0.6 + (secondary.reduce((sum, s) => sum + s, 0) / secondary.length) * 0.4;
+export function combineLuck(
+  planetaryScore: number,
+  rashifalSentiment: number | null,
+  panchangSentiment: number | null = null,
+  schumannSentiment: number | null = null
+): number {
+  const parts: [number, number][] = [[planetaryScore, 0.4]];
+  for (const sentiment of [rashifalSentiment, panchangSentiment, schumannSentiment]) {
+    if (sentiment !== null) parts.push([sentiment, 0.2]);
+  }
+  const weight = parts.reduce((sum, [, w]) => sum + w, 0);
+  const combined = parts.reduce((sum, [value, w]) => sum + value * w, 0) / weight;
   return Math.max(5, Math.min(97, Math.round(50 + combined * 45)));
+}
+
+/**
+ * The Schumann calmness score (0-100, see schumann.ts) as a luck sentiment:
+ * a calm field (0) is favorable (1), a moderate one (50) neutral, an
+ * intense or transformative one (100) unfavorable (-1).
+ */
+export function schumannSentiment(score: number): number {
+  return Math.max(-1, Math.min(1, 1 - score / 50));
+}
+
+/**
+ * Recomputes a reading's luck %, mood and 4 tags with a Schumann calmness
+ * score (or none) -- at generation and again on each hourly wallpaper
+ * refresh, since the Schumann data changes through the day while every
+ * other source is fixed for the day.
+ */
+export function applySchumann(reading: DailyReading, score: number | null): DailyReading {
+  const rashifalSentimentValue = reading.rashifal?.sentiment ?? null;
+  const panchangSentimentValue = reading.panchang?.insight?.sentiment ?? null;
+  const schumann = score === null ? null : schumannSentiment(score);
+  const luckScore = combineLuck(reading.planetary.score, rashifalSentimentValue, panchangSentimentValue, schumann);
+  const secondary = [rashifalSentimentValue, panchangSentimentValue, schumann].filter((s): s is number => s !== null);
+  const externalSentiment = secondary.length ? secondary.reduce((sum, s) => sum + s, 0) / secondary.length : null;
+
+  const tags: ReadingTag[] = [{ source: "planets", tag: HOUSE_THEME_TAGS[reading.planetary.moonHouse] }];
+  if (reading.rashifal) tags.push({ source: "rashifal", tag: reading.rashifal.theme });
+  if (reading.panchang?.insight) tags.push({ source: "panchang", tag: reading.panchang.insight.theme });
+  if (score !== null) tags.push({ source: "schumann", tag: schumannLevel(score).toLowerCase() });
+
+  return {
+    ...reading,
+    luckScore,
+    intent: { ...reading.intent, mood: moodFor(luckScore, externalSentiment, reading.planetary) },
+    tags,
+    schumannScore: score,
+  };
 }
 
 /**
@@ -209,7 +272,13 @@ export function combineLuck(planetaryScore: number, rashifalSentiment: number | 
  * birth coordinates already in `astrology`) is used to fetch today's
  * Panchang for that same place.
  */
-export async function buildDailyReading(astrology: StructuredAstrologyData, forDate: Date, timezone: string): Promise<DailyReading> {
+export async function buildDailyReading(
+  astrology: StructuredAstrologyData,
+  forDate: Date,
+  timezone: string,
+  /** This hour's Schumann calmness score, if available (see applySchumann). */
+  schumannScore: number | null = null
+): Promise<DailyReading> {
   // The natal chart is sidereal (Lahiri) for the Vedic system, which is the
   // only one the app offers -- exactly what the rashi and gochar need.
   const natalMoon = astrology.natalChart.planets.moon.longitude;
@@ -236,15 +305,11 @@ export async function buildDailyReading(astrology: StructuredAstrologyData, forD
   const panchangData = await fetchPanchang(panchangInput);
   const panchangInsight = panchangData ? await getPanchangInsight(panchangData, panchangCacheKey(panchangInput)) : null;
 
-  const luckScore = combineLuck(planetary.score, summary?.sentiment ?? null, panchangInsight?.sentiment ?? null);
-  const secondarySentiments = [summary?.sentiment, panchangInsight?.sentiment].filter((s): s is number => s !== undefined && s !== null);
-  const externalSentiment = secondarySentiments.length ? secondarySentiments.reduce((sum, s) => sum + s, 0) / secondarySentiments.length : null;
-
-  return {
+  const base: DailyReading = {
     rashi: { name: rashi.name, nepali: rashi.nepali, sign: rashi.sign },
-    luckScore,
+    luckScore: 50, // set by applySchumann below, with the mood
     intent: {
-      mood: moodFor(luckScore, externalSentiment, planetary),
+      mood: "steady",
       theme: summary?.theme ?? panchangInsight?.theme ?? houseTheme,
     },
     planetary,
@@ -254,4 +319,5 @@ export async function buildDailyReading(astrology: StructuredAstrologyData, forD
         ? { bsDate: rashifalText.bsDate, source: rashifalText.source, ...summary }
         : null,
   };
+  return applySchumann(base, schumannScore);
 }

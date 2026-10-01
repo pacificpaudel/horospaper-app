@@ -5,12 +5,12 @@ import { buildImagePrompt } from "./prompt";
 import { generateMockHoroscopeImageSvg } from "./mockImage";
 import { DailyReading } from "@/lib/dailyReading";
 import { generateOpenverseImage } from "./openverseImage";
-import { withWallpaperOverlay, TargetCanvas } from "./compositeOverlay";
+import { readingTags, withWallpaperOverlay, TargetCanvas } from "./compositeOverlay";
 import { getSchumannSnapshot } from "@/lib/schumann";
 import type { SchumannView } from "./schumannOverlay";
 import { createHash } from "node:crypto";
 
-const IMAGE_GENERATOR_VERSION = "daily-image-v24";
+const IMAGE_GENERATOR_VERSION = "daily-image-v26";
 
 // Source images (a random-aspect-ratio Openverse photo, OpenAI's fixed
 // portrait size, or the mock SVG's native 4:5) rarely match either wallpaper
@@ -113,6 +113,8 @@ async function renderMock(seed: string, ctx: OverlayContext) {
     emotionalTheme: ctx.emotionalTheme,
     moonIllumination: astrology.today.moonIllumination,
     schumann: ctx.schumann,
+    tags: readingTags(reading),
+    zodiacSign: reading.rashi?.sign,
   };
   const [svg, mobileSvg, frameSvg] = await Promise.all([
     generateMockHoroscopeImageSvg({ ...svgOpts, target: desktopTargetFor(ctx.desktopRatio) }),

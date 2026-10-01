@@ -9,6 +9,7 @@ import { BsDatePicker } from "./BsDatePicker";
 import { CityDropdown, CityOption } from "./CityDropdown";
 import type { BirthSnapshot } from "@/lib/astrology/birthSnapshot";
 import { DiagramPlanet, planetBodyMarkup } from "@/lib/image/planetBodies";
+import { isZodiacSign, zodiacBadgeSvg } from "@/lib/image/zodiacIcons";
 
 export type ViewMode = "DESKTOP" | "FRAME";
 
@@ -408,6 +409,7 @@ export function BirthProfileForm({
         :global(.birth-chart-kundli img) { width: min(100%, 26rem); aspect-ratio: 1; display: block; border-radius: 0.4rem; }
         :global(.birth-chart-planet) { width: 4rem; height: 4rem; }
         :global(.birth-chart-sign) { font-size: 2.6rem; line-height: 1; color: #f7c56a; }
+        :global(.birth-chart-zodiac) { width: 4.5rem; height: 4.5rem; display: block; }
         :global(.birth-chart-note) { grid-column: 1 / -1; font-size: 0.72rem; color: #b8b2a4; }
         @media (max-width: 1080px) {
           :global(.birth-strip) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -539,7 +541,10 @@ function useBirthSnapshot({
                 },
                 possibleRashis,
                 source: "freeastrologyapi",
-                chartSvg: chart.chartSvg ?? (localKundli ? buildKundliSvg(localKundli) : null),
+                // The app's own drawing (it matches the API's chart house for
+                // house), so the form shows the same numbered house icons and
+                // rashi circles as the wallpaper's Luck Chart.
+                chartSvg: localKundli ? buildKundliSvg(localKundli) : chart.chartSvg,
                 mahadasha: chart.mahadasha,
                 timeMissing,
               });
@@ -571,7 +576,16 @@ function BirthChartPanel({ chart }: { chart: BirthChartView }) {
       label: "Horoscope sign (rashi)",
       value: `${snapshot.rashi.name} · ${snapshot.rashi.nepali} (${snapshot.rashi.sign})`,
       // U+FE0E asks for the plain text glyph rather than a colored emoji.
-      visual: <span className="birth-chart-sign" aria-hidden="true">{snapshot.rashiSymbol}{"\uFE0E"}</span>,
+      visual: isZodiacSign(snapshot.rashi.sign) ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          className="birth-chart-zodiac"
+          src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(zodiacBadgeSvg(snapshot.rashi.sign))}`}
+          alt={`${snapshot.rashi.sign} zodiac sign`}
+        />
+      ) : (
+        <span className="birth-chart-sign" aria-hidden="true">{snapshot.rashiSymbol}{"\uFE0E"}</span>
+      ),
     },
     {
       label: "Moon at birth",

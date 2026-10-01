@@ -6,9 +6,9 @@ import { dateOnlyString } from "@/lib/astrology/dailyData";
 import { generateHoroscope } from "@/lib/llm/generateHoroscope";
 import { HoroscopeSections } from "@/lib/llm/types";
 import { generateHoroscopeImage, rerenderHoroscopeImage, WallpaperSource } from "@/lib/image/generateImage";
-import { currentSchumannHour } from "@/lib/schumann";
+import { currentSchumannHour, getSchumannSnapshot } from "@/lib/schumann";
 import { deleteGeneratedFiles } from "@/lib/storage";
-import { buildDailyReading, DailyReading } from "@/lib/dailyReading";
+import { applySchumann, buildDailyReading, DailyReading } from "@/lib/dailyReading";
 import { fetchKundli } from "@/lib/astrologyApi";
 import { kundliFromNatal } from "@/lib/image/kundliOverlay";
 import { BirthProfile } from "@/types/models";
@@ -97,7 +97,7 @@ export async function generateHoroscopeForUser(params: {
   // text, and the day's luck + 2 tags (planetary gochar + Nepali rashifal).
   const [textResult, reading] = await Promise.allSettled([
     generateHoroscope(astrology, { name: profile.name, language: profile.language }),
-    buildDailyReading(astrology, forDate, profile.timezone),
+    getSchumannSnapshot().then((snapshot) => buildDailyReading(astrology, forDate, profile.timezone, snapshot.score)),
   ]);
   if (textResult.status === "rejected") {
     logGenerationError(userId, "llm", textResult.reason);
@@ -195,10 +195,15 @@ export function needsSchumannRefresh(horoscope: Horoscope): boolean {
 export async function refreshHoroscopeWallpaper(horoscope: Horoscope, timeZone: string, desktopRatio?: number): Promise<Horoscope> {
   if (!horoscope.wallpaperSource || !horoscope.dailyReading) return horoscope;
   try {
+    // The Schumann calmness is one of the luck % sources, so the luck and
+    // the 4 tags move with it every hour; the rest of the day's reading
+    // (planets, rashifal, Panchang) stays as generated.
+    const { score } = await getSchumannSnapshot();
+    const reading = applySchumann(horoscope.dailyReading, score);
     const image = await rerenderHoroscopeImage({
       source: horoscope.wallpaperSource,
       astrology: horoscope.astrologyData,
-      reading: horoscope.dailyReading,
+      reading,
       style: horoscope.imageStyle,
       luckyTheme: horoscope.horoscopeText.luckyTheme,
       emotionalTheme: horoscope.horoscopeText.overall,
@@ -207,6 +212,7 @@ export async function refreshHoroscopeWallpaper(horoscope: Horoscope, timeZone: 
     });
     const refreshed: Horoscope = {
       ...horoscope,
+      dailyReading: reading,
       imageUrl: image.url,
       imageUrlMobile: image.mobileUrl,
       imageUrlFrame: image.frameUrl,
