@@ -1,17 +1,10 @@
 import { ImageStyle } from "@/types/enums";
 import { StructuredAstrologyData } from "@/lib/astrology";
-import { buildPlanetDiagramsMarkup, buildPlanetNamesMarkup } from "./planetDiagram";
-import { buildLuckMeterMarkup } from "./luckMeterOverlay";
-import { buildDateHeaderMarkup, dateHeaderBottom } from "./dateHeaderOverlay";
-import { buildSchumannMarkup } from "./schumannOverlay";
-import type { SchumannSnapshot } from "@/lib/schumann";
+import type { SchumannView } from "./schumannOverlay";
 import { DailyIntent } from "./dailyIntent";
-import { buildGalaxyMarkup } from "./galaxyOverlay";
-import { buildKundliMarkup } from "./kundliOverlay";
-import { buildPanchangMarkup } from "./panchangOverlay";
+import { buildOverlayLayers } from "./compositeOverlay";
 import type { KundliData } from "@/lib/astrologyApi";
 import type { DailyReading } from "@/lib/dailyReading";
-import { dateOnlyString } from "@/lib/astrology/dailyData";
 
 const WIDTH = 1080;
 const HEIGHT = 1350; // 4:5
@@ -67,7 +60,7 @@ export async function generateMockHoroscopeImageSvg(opts: {
   moonIllumination?: number;
   target?: { width: number; height: number };
   flushPlanets?: boolean;
-  schumann?: SchumannSnapshot | null;
+  schumann?: SchumannView | null;
 }): Promise<string> {
   const rand = mulberry32(hashSeed(opts.seed));
   const [, bg2, accent] = PALETTES[opts.style];
@@ -136,18 +129,20 @@ export async function generateMockHoroscopeImageSvg(opts: {
   const terminatorX = moonR - moon * 2 * moonR;
   const targetWidth = opts.target?.width ?? WIDTH;
   const targetHeight = opts.target?.height ?? HEIGHT;
-  const planetDiagrams = astrology ? buildPlanetDiagramsMarkup(astrology, targetWidth, targetHeight, opts.flushPlanets) : "";
-  const planetNames = astrology ? await buildPlanetNamesMarkup(targetWidth, targetHeight, opts.flushPlanets) : "";
-  const generationDate = astrology?.generationDate ?? dateOnlyString(new Date());
-  const schumannOverlay = buildSchumannMarkup(targetWidth, targetHeight, dateHeaderBottom(targetWidth, targetHeight, generationDate, opts.intent), opts.schumann);
-  const panchangMarkup = await buildPanchangMarkup(targetWidth, targetHeight, opts.panchang ?? null, schumannOverlay.clearY);
-  const luckMeter =
-    (opts.kundli ? buildKundliMarkup(targetWidth, targetHeight, opts.kundli, generationDate) : "") +
-    panchangMarkup +
-    buildLuckMeterMarkup(targetWidth, targetHeight, opts.luckScore) +
-    planetNames;
-  const galaxy = buildGalaxyMarkup(targetWidth, targetHeight, generationDate);
-  const dateHeader = buildDateHeaderMarkup(targetWidth, targetHeight, generationDate, opts.intent) + schumannOverlay.markup;
+  // Every overlay, laid out exactly as on a photo wallpaper (see compositeOverlay.ts).
+  const overlays = astrology
+    ? await buildOverlayLayers({
+        width: targetWidth,
+        height: targetHeight,
+        astrology,
+        intent: opts.intent,
+        luckScore: opts.luckScore,
+        kundli: opts.kundli,
+        panchang: opts.panchang ?? null,
+        flush: opts.flushPlanets,
+        schumann: opts.schumann,
+      })
+    : "";
 
   const artwork = `<defs>
     <linearGradient id="paper" x1="0" y1="0" x2="1" y2="1">
@@ -204,7 +199,7 @@ export async function generateMockHoroscopeImageSvg(opts: {
   <path d="M112 1215c190-48 345 45 500-5s300-60 410 12" fill="none" stroke="#20314d" stroke-width="5" stroke-dasharray="12 20" opacity="0.55" />`;
 
   if (targetWidth === WIDTH && targetHeight === HEIGHT) {
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}">${artwork}${galaxy}${planetDiagrams}${dateHeader}${luckMeter}</svg>`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}">${artwork}${overlays}</svg>`;
   }
 
   // A taller/narrower target (e.g. a phone wallpaper canvas) reuses the same
@@ -213,9 +208,6 @@ export async function generateMockHoroscopeImageSvg(opts: {
   // fresh in the real target coordinate space so they stay correctly inset.
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${targetWidth}" height="${targetHeight}" viewBox="0 0 ${targetWidth} ${targetHeight}">
   <svg x="0" y="0" width="${targetWidth}" height="${targetHeight}" viewBox="0 0 ${WIDTH} ${HEIGHT}" preserveAspectRatio="xMidYMid slice">${artwork}</svg>
-  ${galaxy}
-  ${planetDiagrams}
-  ${dateHeader}
-  ${luckMeter}
+  ${overlays}
 </svg>`;
 }

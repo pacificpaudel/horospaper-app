@@ -2,11 +2,12 @@ import { StructuredAstrologyData } from "@/lib/astrology";
 import { buildPlanetDiagramsMarkup, buildPlanetNamesMarkup } from "./planetDiagram";
 import { buildLuckMeterMarkup } from "./luckMeterOverlay";
 import { buildDateHeaderMarkup, dateHeaderBottom } from "./dateHeaderOverlay";
-import { buildSchumannMarkup } from "./schumannOverlay";
-import type { SchumannSnapshot } from "@/lib/schumann";
+import { buildGaugeMarkup, buildGraphMarkup, SchumannView } from "./schumannOverlay";
 import { buildGalaxyMarkup } from "./galaxyOverlay";
-import { buildKundliMarkup } from "./kundliOverlay";
-import { buildPanchangMarkup } from "./panchangOverlay";
+import { buildGocharMarkup } from "./kundliOverlay";
+import { layoutWallpaper } from "./wallpaperLayout";
+import type { DailyIntent } from "./dailyIntent";
+import type { KundliData } from "@/lib/astrologyApi";
 import { DailyReading } from "@/lib/dailyReading";
 
 export interface TargetCanvas {
@@ -15,15 +16,62 @@ export interface TargetCanvas {
 }
 
 /**
- * Composites the 4 planet-position diagrams and the luck-meter bar onto a
+ * Every overlay drawn on a `width`x`height` wallpaper, as SVG markup (no
+ * <svg> wrapper): galaxy, the 4 corner planet diagrams and their names,
+ * the date header with its 2 tags, the Schumann gauge + live graph, the
+ * gochar block (with the day's Panchang), and the luck meter. Shared by
+ * the photo composite below and the local SVG artwork (mockImage.ts), so
+ * the two can never lay things out differently.
+ */
+export async function buildOverlayLayers(params: {
+  width: number;
+  height: number;
+  astrology: StructuredAstrologyData;
+  intent?: DailyIntent;
+  luckScore: number;
+  kundli?: KundliData | null;
+  panchang: DailyReading["panchang"];
+  flush?: boolean;
+  schumann?: SchumannView | null;
+}): Promise<string> {
+  const { width, height, astrology, intent, kundli, schumann } = params;
+  const flush = Boolean(params.flush);
+  const date = astrology.generationDate;
+  const [layout, planetNames] = await Promise.all([
+    layoutWallpaper({
+      width,
+      height,
+      headerBottom: dateHeaderBottom(width, height, date, intent),
+      flush,
+      hasKundli: Boolean(kundli),
+      panchang: params.panchang,
+      snapshot: schumann?.snapshot,
+    }),
+    buildPlanetNamesMarkup(width, height, flush),
+  ]);
+  const score = schumann?.snapshot.score;
+  const graph = schumann?.snapshot.graph;
+  return [
+    buildGalaxyMarkup(width, height, date),
+    buildPlanetDiagramsMarkup(astrology, width, height, flush),
+    planetNames,
+    buildDateHeaderMarkup(width, height, date, intent),
+    layout.graph && graph && schumann ? buildGraphMarkup(layout.graph, graph, layout.labelSize, schumann) : "",
+    layout.gauge && score != null ? buildGaugeMarkup(layout.gauge.cx, layout.gauge.cy, layout.gauge.d, score) : "",
+    layout.gochar && kundli ? buildGocharMarkup(layout.gochar, kundli, date) : "",
+    buildLuckMeterMarkup(width, height, params.luckScore),
+  ].join("");
+}
+
+/**
+ * Composites every wallpaper overlay (see buildOverlayLayers) onto a
  * raster image (JPEG/PNG/WEBP), so the downloaded file is a single
  * complete wallpaper rather than needing the on-page overlays to make
  * sense of it. With no `target`, the image's own dimensions are used
  * untouched (the desktop/default path). With a `target`, the source is
  * first smart-cropped to fill that canvas exactly -- used to produce a
  * phone-wallpaper-shaped variant from whatever aspect ratio the source
- * photo happens to be. `schumann` adds the live Schumann gauge + graph
- * below the date header (see schumannOverlay.ts).
+ * photo happens to be.
  */
 export async function withWallpaperOverlay(
   image: Buffer,
@@ -31,7 +79,7 @@ export async function withWallpaperOverlay(
   reading: DailyReading,
   target?: TargetCanvas,
   flushPlanets = false,
-  schumann?: SchumannSnapshot | null
+  schumann?: SchumannView | null
 ): Promise<Buffer> {
   const sharp = (await import("sharp")).default;
   let base = sharp(image);
@@ -48,11 +96,17 @@ export async function withWallpaperOverlay(
     height = metadata.height ?? 1350;
   }
 
-  const schumannOverlay = buildSchumannMarkup(width, height, dateHeaderBottom(width, height, astrology.generationDate, reading.intent), schumann);
-  const [panchangMarkup, planetNames] = await Promise.all([
-    buildPanchangMarkup(width, height, reading.panchang, schumannOverlay.clearY),
-    buildPlanetNamesMarkup(width, height, flushPlanets),
-  ]);
-  const overlay = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${buildGalaxyMarkup(width, height, astrology.generationDate)}${buildPlanetDiagramsMarkup(astrology, width, height, flushPlanets)}${buildDateHeaderMarkup(width, height, astrology.generationDate, reading.intent)}${schumannOverlay.markup}${reading.kundli ? buildKundliMarkup(width, height, reading.kundli, astrology.generationDate) : ""}${panchangMarkup}${buildLuckMeterMarkup(width, height, reading.luckScore)}${planetNames}</svg>`;
+  const layers = await buildOverlayLayers({
+    width,
+    height,
+    astrology,
+    intent: reading.intent,
+    luckScore: reading.luckScore,
+    kundli: reading.kundli,
+    panchang: reading.panchang,
+    flush: flushPlanets,
+    schumann,
+  });
+  const overlay = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${layers}</svg>`;
   return base.composite([{ input: Buffer.from(overlay), top: 0, left: 0 }]).toBuffer();
 }

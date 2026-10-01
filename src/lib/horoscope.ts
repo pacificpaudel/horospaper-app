@@ -73,8 +73,10 @@ export async function generateHoroscopeForUser(params: {
   isPreview?: boolean;
   desktopRatio?: number;
   regenerateArt?: boolean;
+  /** Zone the wallpaper's Schumann graph is labelled in; defaults to the birth timezone. */
+  displayTimeZone?: string;
 }): Promise<Horoscope> {
-  const { userId, profile, forDate = new Date(), isPreview = false, desktopRatio, regenerateArt = false } = params;
+  const { userId, profile, forDate = new Date(), isPreview = false, desktopRatio, regenerateArt = false, displayTimeZone = profile.timezone } = params;
   const day = dateOnlyString(forDate);
 
   let astrology: StructuredAstrologyData;
@@ -143,6 +145,7 @@ export async function generateHoroscopeForUser(params: {
       emotionalTheme: sections.overall,
       desktopRatio,
       randomizeArt: regenerateArt,
+      timeZone: displayTimeZone,
     });
     imageUrl = image.url;
     imageUrlMobile = image.mobileUrl;
@@ -189,7 +192,7 @@ export function needsSchumannRefresh(horoscope: Horoscope): boolean {
  * against the daily generation budget. On failure the existing horoscope
  * is returned as-is.
  */
-export async function refreshHoroscopeWallpaper(horoscope: Horoscope, desktopRatio?: number): Promise<Horoscope> {
+export async function refreshHoroscopeWallpaper(horoscope: Horoscope, timeZone: string, desktopRatio?: number): Promise<Horoscope> {
   if (!horoscope.wallpaperSource || !horoscope.dailyReading) return horoscope;
   try {
     const image = await rerenderHoroscopeImage({
@@ -200,6 +203,7 @@ export async function refreshHoroscopeWallpaper(horoscope: Horoscope, desktopRat
       luckyTheme: horoscope.horoscopeText.luckyTheme,
       emotionalTheme: horoscope.horoscopeText.overall,
       desktopRatio,
+      timeZone,
     });
     const refreshed: Horoscope = {
       ...horoscope,

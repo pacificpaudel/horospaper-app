@@ -104,7 +104,14 @@ export function buildPlanetDiagramsMarkup(astrology: StructuredAstrologyData, wi
     .join("");
 }
 
-function diagramBoxes(width: number, height: number, flush: boolean): { spec: DiagramSpec; x: number; y: number; size: number }[] {
+export interface DiagramBox {
+  spec: DiagramSpec;
+  x: number;
+  y: number;
+  size: number;
+}
+
+export function diagramBoxes(width: number, height: number, flush: boolean): DiagramBox[] {
   const size = Math.max(100, Math.min(190, Math.round(Math.min(width, height) * 0.17)));
   const isPortrait = height > width;
   const margin = isPortrait && !flush ? Math.round(Math.min(width, height) * 0.12) : 0;
@@ -123,36 +130,43 @@ const NEPALI_NAMES: Record<DiagramPlanet, string> = {
   mars: "मंगल",
 };
 
+const NAME_SIZE = 0.15; // of the diagram's side
+const PILL_HEIGHT = NAME_SIZE * 1.35;
+const PILL_GAP = 0.04;
+
 /**
- * Each corner diagram's planet name in Nepali: below the top two, above
- * the bottom two, on a small dark pill. Aligned to the diagram's outer
- * edge rather than centered, so the bottom-right name stays clear of the
- * Panchang panel, which can overlap that diagram's inner side. Async:
- * real HarfBuzz-shaped Devanagari (see devanagariShaper.ts).
+ * The vertical span a corner diagram and its name pill take up together
+ * (the name sits below the top diagrams and above the bottom ones), so
+ * other overlays can keep clear of both.
+ */
+export function diagramZone(box: DiagramBox): { top: number; bottom: number } {
+  const label = box.size * (PILL_GAP + PILL_HEIGHT);
+  return box.spec.corner.startsWith("top") ? { top: box.y, bottom: box.y + box.size + label } : { top: box.y - label, bottom: box.y + box.size };
+}
+
+/**
+ * Each corner diagram's planet name in Nepali, centered just below the
+ * top two diagrams and just above the bottom two, on a small dark pill.
+ * Async: real HarfBuzz-shaped Devanagari (see devanagariShaper.ts).
  */
 export async function buildPlanetNamesMarkup(width: number, height: number, flush = false): Promise<string> {
   const boxes = diagramBoxes(width, height, flush);
   const shaped = await Promise.all(boxes.map(({ spec }) => shapeDevanagariText(NEPALI_NAMES[spec.planet])));
   return boxes
     .map(({ spec, x, y, size }, i) => {
-      const fontSize = size * 0.15;
+      const fontSize = size * NAME_SIZE;
       const textWidth = shaped[i].width * fontSize;
       const padX = fontSize * 0.45;
-      const pillH = fontSize * 1.35;
-      const inset = size * 0.06;
-      const gap = size * 0.04;
-      let left = spec.corner.endsWith("left") ? x + inset : x + size - inset - textWidth - padX * 2;
-      // The Panchang panel reaches right up to `width - size` (see
-      // panchangOverlay.ts's rightLimit) -- start past it, even if that
-      // runs the pill a little beyond the diagram's own right edge.
-      if (spec.corner === "bottom-right") left = Math.max(left, width - size + inset * 0.5);
-      const top = spec.corner.startsWith("top") ? y + size + gap : y - gap - pillH;
+      const pillH = size * PILL_HEIGHT;
+      const pillW = textWidth + padX * 2;
+      const left = x + size / 2 - pillW / 2;
+      const top = spec.corner.startsWith("top") ? y + size + size * PILL_GAP : y - size * PILL_GAP - pillH;
       // Noto Sans Devanagari's headline sits ~0.72 em above the baseline;
       // the extra 0.1 em centers the matras' descent in the pill.
       const baseline = top + (pillH - fontSize) / 2 + fontSize * 0.82;
       return `
   <g>
-    <rect x="${left.toFixed(1)}" y="${top.toFixed(1)}" width="${(textWidth + padX * 2).toFixed(1)}" height="${pillH.toFixed(1)}" rx="${(pillH / 2).toFixed(1)}" fill="#0b1220" fill-opacity="0.62" />
+    <rect x="${left.toFixed(1)}" y="${top.toFixed(1)}" width="${pillW.toFixed(1)}" height="${pillH.toFixed(1)}" rx="${(pillH / 2).toFixed(1)}" fill="#0b1220" fill-opacity="0.62" />
     <path d="${shaped[i].d}" fill="#fdf6e6" transform="translate(${(left + padX).toFixed(1)} ${baseline.toFixed(1)}) scale(${fontSize.toFixed(2)})" />
   </g>`;
     })

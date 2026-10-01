@@ -11,6 +11,7 @@ import { CrystalBallScene } from "@/components/CrystalBallScene";
 import { ensureGuestId } from "@/lib/client/guest";
 import { apiFetch, ApiError } from "@/lib/client/api";
 import { BirthProfileDTO, HoroscopeDTO } from "@/types/api";
+import { APP_VERSION } from "@/lib/version";
 
 // Header (5rem) + footer (4rem) chrome subtracted from the viewport height,
 // and the output canvas's own max-w-6xl + padding subtracted from the
@@ -88,7 +89,7 @@ function HoroscopeArtwork({
         unoptimized
         className="output-image"
       />
-      <span className="wallpaper-version" aria-hidden="true">Version 3.0</span>
+      <span className="wallpaper-version" aria-hidden="true">Version {APP_VERSION}</span>
     </div>
   );
 }

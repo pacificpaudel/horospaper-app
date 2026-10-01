@@ -1,23 +1,22 @@
+import { getTimezoneOffset } from "date-fns-tz";
 import { schumannLevel, SchumannGraph, SchumannSnapshot, TOMSK_UTC_OFFSET_HOURS } from "@/lib/schumann";
-import { kundliRect } from "./kundliOverlay";
 import { buildCenteredVectorTextMarkup, buildVectorTextMarkup, measureVectorText, TextStyle } from "./vectorFont";
 
 // schumannresonance.today's circular "calmness" gauge and its live Tomsk
-// spectrogram, drawn just below the date header's 2 tags. The gauge is a
-// vector copy of the site's own EnergyGauge component (same 260-unit
-// geometry, colors and thresholds), with no backdrop so the photo shows
-// through. The spectrogram is the site's live image cropped to its plot,
-// with the wallpaper's own large axis labels drawn around it -- the
-// source's labels are ~11px tall and would be unreadable once scaled
-// onto a wallpaper. All text uses the vector font, never <text> (sharp's
-// rasterizer has no fonts in production -- see vectorFont.ts).
-//
-// Portrait canvases (mobile/frame) stack the graph below the gauge; on a
-// landscape desktop canvas there isn't the height for that above the
-// kundli, so the two sit side by side as one centered row instead.
+// spectrogram. The gauge is a vector copy of the site's own EnergyGauge
+// component (same 260-unit geometry, colors and thresholds), with no
+// backdrop so the photo shows through. The spectrogram is the site's live
+// image cropped to its plot, with the wallpaper's own axis labels drawn
+// around it -- in the viewer's local time rather than the station's, plus
+// a red line at the current time. The source's own labels are ~11px tall
+// and would be unreadable once scaled onto a wallpaper. All text uses the
+// vector font, never <text> (sharp's rasterizer has no fonts in
+// production -- see vectorFont.ts). Where each part goes is decided by
+// wallpaperLayout.ts.
 
 const PLOT_HOURS = 72;
 const PLOT_MAX_HZ = 40;
+const HOUR_MS = 3600_000;
 const WEEKDAYS = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 
@@ -25,6 +24,22 @@ const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "
 const TRACK_COLOR = "#1b1f32"; // hsl(230, 30%, 15%)
 const DIM_DOT_COLOR = "#2d3353"; // hsl(230, 30%, 25%)
 const MUTED_COLOR = "#a3acc6";
+const NOW_COLOR = "#ff4d4d";
+
+/** This hour's snapshot, plus who it's drawn for: their time zone and the render time. */
+export interface SchumannView {
+  snapshot: SchumannSnapshot;
+  /** IANA zone the graph's axes are labelled in. */
+  timeZone: string;
+  now: Date;
+}
+
+export interface Box {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
 
 function levelColor(score: number): string {
   if (score <= 25) return "#30abe8"; // hsl(200, 80%, 55%)
@@ -33,14 +48,7 @@ function levelColor(score: number): string {
   return "#ff3dff"; // hsl(300, 100%, 62%)
 }
 
-interface Box {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}
-
-interface GraphChrome {
+export interface GraphChrome {
   padX: number;
   padTop: number;
   titleSize: number;
@@ -52,24 +60,24 @@ interface GraphChrome {
 }
 
 /** Fixed space around the plot, for label size `l`. Uncropped graphs carry their own axes. */
-function graphChrome(l: number, cropped: boolean): GraphChrome {
+export function graphChrome(l: number, cropped: boolean): GraphChrome {
   const titleSize = l * 1.05;
   return {
-    padX: l * 0.9,
-    padTop: l * 0.75,
+    padX: l * 0.8,
+    padTop: l * 0.7,
     titleSize,
-    titleRow: titleSize * 1.8,
-    dateRow: cropped ? l * 1.7 : 0,
-    hourRow: cropped ? l * 2.0 : 0,
-    padBottom: l * 0.6,
-    axisW: cropped ? l * 2.6 : 0,
+    titleRow: titleSize * 1.7,
+    dateRow: cropped ? l * 1.6 : 0,
+    hourRow: cropped ? l * 1.9 : 0,
+    padBottom: l * 0.5,
+    axisW: cropped ? l * 2.5 : 0,
   };
 }
 
-const chromeHeight = (c: GraphChrome) => c.padTop + c.titleRow + c.dateRow + c.hourRow + c.padBottom;
-const chromeWidth = (c: GraphChrome) => c.padX * 2 + c.axisW;
+export const chromeHeight = (c: GraphChrome) => c.padTop + c.titleRow + c.dateRow + c.hourRow + c.padBottom;
+export const chromeWidth = (c: GraphChrome) => c.padX * 2 + c.axisW;
 
-function gaugeMarkup(cx: number, cy: number, d: number, score: number): string {
+export function buildGaugeMarkup(cx: number, cy: number, d: number, score: number): string {
   const s = d / 260;
   const color = levelColor(score);
   const r = 120 * s;
@@ -115,24 +123,29 @@ function gaugeMarkup(cx: number, cy: number, d: number, score: number): string {
   </g>`;
 }
 
-function dayLabel(isoDay: string, maxWidth: number, size: number, style: TextStyle): string {
-  const [year, month, day] = isoDay.split("-").map(Number);
-  const date = new Date(Date.UTC(year, month - 1, day, 12));
-  const full = `${WEEKDAYS[date.getUTCDay()]} ${day} ${MONTHS[month - 1]}`;
-  return measureVectorText(full, size, style) <= maxWidth ? full : `${day} ${MONTHS[month - 1]}`;
+/** UTC offset of `timeZone` at `ms`, in ms; 0 for an unknown zone. */
+function offsetMs(timeZone: string, ms: number): number {
+  const offset = getTimezoneOffset(timeZone, new Date(ms));
+  return Number.isFinite(offset) ? offset : 0;
 }
 
-function shiftDay(isoDay: string, days: number): string {
-  const [year, month, day] = isoDay.split("-").map(Number);
-  return new Date(Date.UTC(year, month - 1, day + days, 12)).toISOString().slice(0, 10);
+/** Wall-clock fields of instant `ms` in `timeZone`. */
+function localParts(timeZone: string, ms: number): Date {
+  return new Date(ms + offsetMs(timeZone, ms));
 }
 
-function tomskClock(instant: Date): string {
-  const shifted = new Date(instant.getTime() + TOMSK_UTC_OFFSET_HOURS * 3600_000);
-  return `${String(shifted.getUTCHours()).padStart(2, "0")}:${String(shifted.getUTCMinutes()).padStart(2, "0")}`;
+function formatOffset(offset: number): string {
+  const sign = offset < 0 ? "-" : "+";
+  const minutes = Math.round(Math.abs(offset) / 60_000);
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return `UTC${sign}${h}${m ? `:${String(m).padStart(2, "0")}` : ""}`;
 }
 
-function graphMarkup(box: Box, graph: SchumannGraph, l: number): string {
+const clock = (local: Date) => `${String(local.getUTCHours()).padStart(2, "0")}:${String(local.getUTCMinutes()).padStart(2, "0")}`;
+
+export function buildGraphMarkup(box: Box, graph: SchumannGraph, l: number, view: SchumannView): string {
+  const { timeZone } = view;
   const c = graphChrome(l, graph.cropped);
   const plot: Box = {
     x: box.x + c.padX + c.axisW,
@@ -150,17 +163,17 @@ function graphMarkup(box: Box, graph: SchumannGraph, l: number): string {
     `<rect x="${box.x.toFixed(1)}" y="${box.y.toFixed(1)}" width="${box.w.toFixed(1)}" height="${box.h.toFixed(1)}" rx="${(l * 0.7).toFixed(1)}" fill="#0b1220" fill-opacity="0.6" />`
   );
 
-  // Title on the left; the station, its time zone (which the hour axis
-  // is in) and when the chart was last updated on the right, shortened or
-  // dropped if the row is too narrow for both.
+  // Title on the left; the local zone the axis is in and when the chart
+  // was last updated on the right, shortened or dropped if the row is too
+  // narrow for both.
   const title = "SCHUMANN RESONANCE LIVE";
   const titleWidth = measureVectorText(title, c.titleSize, titleStyle);
   parts.push(buildVectorTextMarkup(title, box.x + c.padX, box.y + c.padTop, c.titleSize, titleStyle));
   const roomForInfo = box.w - c.padX * 2 - titleWidth - l * 1.5;
   const infoSize = l * 0.85;
-  const info = [`TOMSK UTC+7 · UPDATED ${tomskClock(graph.updatedAt)}`, `UPDATED ${tomskClock(graph.updatedAt)}`].find(
-    (text) => measureVectorText(text, infoSize, infoStyle) <= roomForInfo
-  );
+  const updated = clock(localParts(timeZone, graph.updatedAt.getTime()));
+  const zone = formatOffset(offsetMs(timeZone, graph.updatedAt.getTime()));
+  const info = [`LOCAL ${zone} · UPDATED ${updated}`, `UPDATED ${updated}`].find((text) => measureVectorText(text, infoSize, infoStyle) <= roomForInfo);
   if (info) {
     const infoWidth = measureVectorText(info, infoSize, infoStyle);
     parts.push(buildVectorTextMarkup(info, box.x + box.w - c.padX - infoWidth, box.y + c.padTop + (c.titleSize - infoSize) / 2, infoSize, infoStyle));
@@ -179,15 +192,35 @@ function graphMarkup(box: Box, graph: SchumannGraph, l: number): string {
     `<rect x="${plot.x.toFixed(1)}" y="${plot.y.toFixed(1)}" width="${plot.w.toFixed(1)}" height="${plot.h.toFixed(1)}" fill="none" stroke="${MUTED_COLOR}" stroke-opacity="0.6" stroke-width="${(l * 0.07).toFixed(1)}" />`
   );
 
-  // Dates over each of the 3 days, with a dashed line at each midnight.
-  const dayWidth = plot.w / 3;
+  // The plot covers 72 hours from Tomsk midnight, 2 days before its newest
+  // day. Everything below positions by instant, labelled in local time.
+  const [year, month, day] = graph.lastDay.split("-").map(Number);
+  const startMs = Date.UTC(year, month - 1, day - 2) - TOMSK_UTC_OFFSET_HOURS * HOUR_MS;
+  const endMs = startMs + PLOT_HOURS * HOUR_MS;
+  const xAt = (ms: number) => plot.x + ((ms - startMs) / (endMs - startMs)) * plot.w;
+
+  // Every whole local hour inside the plot.
+  const hours: { ms: number; hour: number }[] = [];
+  const firstLocal = Math.ceil((startMs + offsetMs(timeZone, startMs)) / HOUR_MS) * HOUR_MS;
+  for (let ms = firstLocal - offsetMs(timeZone, startMs); ms <= endMs; ms += HOUR_MS) {
+    hours.push({ ms, hour: localParts(timeZone, ms).getUTCHours() });
+  }
+
+  // Local midnights split the plot into days: a dashed line at each, and
+  // each day's date centered over its stretch (skipped if too short for it).
   const dateSize = l;
   const dateTop = plot.y - c.dateRow + (c.dateRow - dateSize) / 2 - l * 0.1;
-  for (let i = 0; i < 3; i++) {
-    const label = dayLabel(shiftDay(graph.lastDay, i - 2), dayWidth * 0.92, dateSize, dateStyle);
-    parts.push(buildCenteredVectorTextMarkup(label, plot.x + dayWidth * (i + 0.5), dateTop, dateSize, dateStyle));
+  const midnights = hours.filter((h) => h.hour === 0).map((h) => h.ms);
+  const bounds = [startMs, ...midnights.filter((ms) => ms > startMs && ms < endMs), endMs];
+  for (let i = 0; i < bounds.length - 1; i++) {
+    const segmentWidth = xAt(bounds[i + 1]) - xAt(bounds[i]);
+    const local = localParts(timeZone, (bounds[i] + bounds[i + 1]) / 2);
+    const full = `${WEEKDAYS[local.getUTCDay()]} ${local.getUTCDate()} ${MONTHS[local.getUTCMonth()]}`;
+    const short = `${local.getUTCDate()} ${MONTHS[local.getUTCMonth()]}`;
+    const label = [full, short].find((text) => measureVectorText(text, dateSize, dateStyle) <= segmentWidth * 0.92);
+    if (label) parts.push(buildCenteredVectorTextMarkup(label, (xAt(bounds[i]) + xAt(bounds[i + 1])) / 2, dateTop, dateSize, dateStyle));
     if (i > 0) {
-      const x = (plot.x + dayWidth * i).toFixed(1);
+      const x = xAt(bounds[i]).toFixed(1);
       parts.push(
         `<line x1="${x}" y1="${(plot.y - c.dateRow * 0.25).toFixed(1)}" x2="${x}" y2="${(plot.y + plot.h).toFixed(1)}" stroke="#ffffff" stroke-opacity="0.6" stroke-width="${(l * 0.08).toFixed(1)}" stroke-dasharray="${(l * 0.3).toFixed(1)} ${(l * 0.25).toFixed(1)}" />`
       );
@@ -210,90 +243,27 @@ function graphMarkup(box: Box, graph: SchumannGraph, l: number): string {
   const hzUnit = "HZ";
   parts.push(buildVectorTextMarkup(hzUnit, axisRight - measureVectorText(hzUnit, axisSize, infoStyle), dateTop, axisSize, infoStyle));
 
-  // Hour axis, in Tomsk local time like the source chart, every 3/6/12
-  // hours depending on how much room each label has.
+  // Local-hour axis, every 3/6/12 hours depending on how much room each label has.
   const hourStep = [3, 6, 12].find((step) => (plot.w * step) / PLOT_HOURS >= measureVectorText("18", axisSize, labelStyle) * 2.2) ?? 24;
-  for (let h = 0; h <= PLOT_HOURS; h += hourStep) {
-    const x = plot.x + (h / PLOT_HOURS) * plot.w;
+  for (const { ms, hour } of hours) {
+    if (hour % hourStep !== 0) continue;
+    const x = xAt(ms);
     parts.push(
       `<line x1="${x.toFixed(1)}" y1="${(plot.y + plot.h).toFixed(1)}" x2="${x.toFixed(1)}" y2="${(plot.y + plot.h + l * 0.35).toFixed(1)}" stroke="${MUTED_COLOR}" stroke-width="${(l * 0.07).toFixed(1)}" />`
     );
-    parts.push(buildCenteredVectorTextMarkup(String(h === PLOT_HOURS ? 24 : h % 24), x, plot.y + plot.h + l * 0.6, axisSize, labelStyle));
+    parts.push(buildCenteredVectorTextMarkup(String(hour), x, plot.y + plot.h + l * 0.6, axisSize, labelStyle));
+  }
+
+  // The current time, as a red line with a small marker on top.
+  const nowMs = view.now.getTime();
+  if (nowMs >= startMs && nowMs <= endMs) {
+    const x = xAt(nowMs);
+    const mark = l * 0.4;
+    parts.push(
+      `<line x1="${x.toFixed(1)}" y1="${plot.y.toFixed(1)}" x2="${x.toFixed(1)}" y2="${(plot.y + plot.h).toFixed(1)}" stroke="${NOW_COLOR}" stroke-width="${(l * 0.14).toFixed(1)}" />`,
+      `<path d="M${(x - mark).toFixed(1)} ${(plot.y - mark * 1.2).toFixed(1)} L${(x + mark).toFixed(1)} ${(plot.y - mark * 1.2).toFixed(1)} L${x.toFixed(1)} ${plot.y.toFixed(1)} Z" fill="${NOW_COLOR}" />`
+    );
   }
 
   return `<g>${parts.join("")}</g>`;
-}
-
-export interface SchumannOverlay {
-  markup: string;
-  /** Where overlays below may start: just under everything drawn, or 0 if nothing was. */
-  clearY: number;
-}
-
-/**
- * The gauge and live graph for a `width`x`height` canvas, laid out
- * between `top` (the date header's bottom edge) and the kundli. Either
- * part is left out when its data is missing or there isn't room for it
- * to stay legible.
- */
-export function buildSchumannMarkup(width: number, height: number, top: number, snapshot: SchumannSnapshot | null | undefined): SchumannOverlay {
-  if (!snapshot) return { markup: "", clearY: 0 };
-  const minDim = Math.min(width, height);
-  const gap = Math.round(minDim * 0.015);
-  const startY = top + gap;
-  const avail = kundliRect(width, height).top - gap * 2 - startY;
-  const landscape = width > height;
-  const l = Math.max(12, minDim * (landscape ? 0.016 : 0.019));
-  const score = snapshot.score;
-  let graph = snapshot.graph;
-  const c = graph ? graphChrome(l, graph.cropped) : null;
-  const minPlotH = minDim * 0.07;
-  // The cropped plot is drawn a bit taller than its native 3.6:1 when
-  // there's room, so the frequency bands read clearly.
-  const idealAspect = graph ? (graph.cropped ? 2.4 : graph.width / graph.height) : 1;
-
-  let gaugeD = score != null ? minDim * (landscape ? 0.2 : 0.22) : 0;
-  let gauge: { cx: number; cy: number } | null = null;
-  let graphBox: Box | null = null;
-
-  if (!landscape) {
-    const graphW = Math.min(width * 0.94, minDim * 1.6);
-    let plotH = graph && c ? (graphW - chromeWidth(c)) / idealAspect : 0;
-    const graphH = () => (graph && c ? gap + chromeHeight(c) + plotH : 0);
-    // Out of room: shrink the gauge first (down to a floor), then the plot.
-    if (gaugeD + graphH() > avail) gaugeD = Math.max(score != null ? minDim * 0.14 : 0, avail - graphH());
-    if (gaugeD + graphH() > avail && c) plotH = avail - gaugeD - gap - chromeHeight(c);
-    if (plotH < minPlotH) graph = null;
-    gaugeD = Math.min(gaugeD, avail - graphH());
-    if (gaugeD >= minDim * 0.1) gauge = { cx: width / 2, cy: startY + gaugeD / 2 };
-    else gaugeD = 0;
-    if (graph && c) graphBox = { x: (width - graphW) / 2, y: startY + (gauge ? gaugeD + gap : 0), w: graphW, h: chromeHeight(c) + plotH };
-  } else {
-    // Kept short enough that the Panchang summary strip (which sits
-    // between this row and the kundli) still has room for a line.
-    const rowH = Math.min(avail, Math.round(minDim * 0.19));
-    gaugeD = Math.min(gaugeD, rowH);
-    const plotH = c ? rowH - chromeHeight(c) : 0;
-    if (plotH < minPlotH) graph = null;
-    if (gaugeD < minDim * 0.1) gaugeD = 0;
-    const maxGraphW = width * 0.94 - (gaugeD ? gaugeD + gap : 0);
-    // Wide enough to read, but not stretched past ~8:1.
-    const graphW = graph && c ? Math.min(maxGraphW, chromeWidth(c) + plotH * (graph.cropped ? 8 : idealAspect)) : 0;
-    const groupW = gaugeD + (gaugeD && graphW ? gap : 0) + graphW;
-    const x0 = (width - groupW) / 2;
-    if (gaugeD) gauge = { cx: x0 + gaugeD / 2, cy: startY + rowH / 2 };
-    if (graph && graphW > 0) graphBox = { x: x0 + groupW - graphW, y: startY, w: graphW, h: rowH };
-  }
-
-  const parts: string[] = [];
-  let bottom: number | null = null;
-  if (gauge && score != null) {
-    parts.push(gaugeMarkup(gauge.cx, gauge.cy, gaugeD, score));
-    bottom = gauge.cy + gaugeD / 2;
-  }
-  if (graph && graphBox) {
-    parts.push(graphMarkup(graphBox, graph, l));
-    bottom = Math.max(bottom ?? 0, graphBox.y + graphBox.h);
-  }
-  return { markup: parts.join(""), clearY: bottom === null ? 0 : bottom + gap };
 }

@@ -45,6 +45,12 @@ export async function POST(request: NextRequest) {
   // local calendar day, not the server's UTC day -- otherwise anyone well
   // ahead of UTC would keep getting yesterday's horoscope/wallpaper for
   // hours after their own day has already started.
+  // The Schumann graph's hours are shown in local time: the zone Vercel
+  // geolocates from the request's IP, else the browser's, else the
+  // profile's.
+  const ipTimezone = request.headers.get("x-vercel-ip-timezone");
+  const displayTimeZone = (ipTimezone && isValidTimeZone(ipTimezone) ? ipTimezone : undefined) ?? currentTimezone ?? profile.timezone;
+
   const targetDate = todayForTimezone(new Date(), currentTimezone ?? profile.timezone);
   if (preview) targetDate.setUTCDate(targetDate.getUTCDate() + 1);
 
@@ -56,7 +62,7 @@ export async function POST(request: NextRequest) {
     // The hourly check-in: same day's horoscope, but its wallpaper's live
     // Schumann gauge + graph are redrawn once a new hour's data is out.
     // Free -- not counted against the daily generation budget.
-    const horoscope = needsSchumannRefresh(existing) ? await refreshHoroscopeWallpaper(existing, desktopRatio) : existing;
+    const horoscope = needsSchumannRefresh(existing) ? await refreshHoroscopeWallpaper(existing, displayTimeZone, desktopRatio) : existing;
     return NextResponse.json({ horoscope, cached: true });
   }
 
@@ -84,6 +90,7 @@ export async function POST(request: NextRequest) {
       forDate: targetDate,
       isPreview: preview,
       desktopRatio,
+      displayTimeZone,
       regenerateArt: refresh,
     });
     return NextResponse.json({ horoscope, cached: false });
