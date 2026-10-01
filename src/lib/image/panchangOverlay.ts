@@ -15,7 +15,7 @@ import { shapeDevanagariLines, shapeDevanagariText, ShapedText } from "./devanag
 // the Latin vector font, which is cap-height = 1 with no descender space
 // reserved) -- matches kundliOverlay.ts's devanagariLabelMarkup baseline.
 const BASELINE_FRACTION = 0.72;
-const MAX_SUMMARY_LINES = 5;
+const MAX_SUMMARY_LINES = 8;
 
 export const PANCHANG_FACTS_COLOR = "#fdf6e6";
 export const PANCHANG_SUMMARY_COLOR = "#e8c98a";

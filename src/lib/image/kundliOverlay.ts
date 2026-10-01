@@ -119,6 +119,8 @@ interface Label {
   color: string;
   /** Drawn struck through: where a graha was yesterday, before it moved. */
   struck?: boolean;
+  /** The graha's English name (absent for the lagna label). */
+  planet?: string;
 }
 
 /** One Nepali label (optionally in retrograde parentheses) centered on `cx`, cap-top at `top`. */
@@ -172,21 +174,54 @@ export function kundliChartMarkup(x0: number, y0: number, size: number, kundli: 
     // Nodes always move backwards, so like the API's chart only true
     // planets get the (retrograde) parentheses.
     const retro = planet.retro && planet.name !== "Rahu" && planet.name !== "Ketu";
-    byHouse[house].push({ text, retro, color: "#fdf6e6" });
+    byHouse[house].push({ text, retro, color: "#fdf6e6", planet: planet.name });
   }
   for (const before of previous?.planets ?? []) {
     const text = NEPALI_LABELS[before.name];
     const now = kundli.planets.find((planet) => planet.name === before.name);
     if (!text || !now || now.sign === before.sign) continue;
-    byHouse[(before.sign - kundli.ascendantSign + 12) % 12].push({ text, retro: false, color: MOVED_COLOR, struck: true });
+    byHouse[(before.sign - kundli.ascendantSign + 12) % 12].push({ text, retro: false, color: MOVED_COLOR, struck: true, planet: before.name });
   }
 
+  // Each label's center, so a moved graha can be joined to where it was.
+  const centers = new Map<string, [number, number]>();
   const labels = byHouse
     .map((entries, i) => {
       const [fx, fy] = HOUSES[i].label;
       const lineHeight = fontSize * 1.08;
       const top = y0 + fy * size - (entries.length * lineHeight) / 2 + fontSize * 0.05;
-      return entries.map((entry, row) => devanagariLabelMarkup(entry, x0 + fx * size, top + row * lineHeight, fontSize)).join("");
+      return entries
+        .map((entry, row) => {
+          if (entry.planet) centers.set(`${entry.planet}:${entry.struck ? "was" : "now"}`, [x0 + fx * size, top + row * lineHeight + fontSize * 0.45]);
+          return devanagariLabelMarkup(entry, x0 + fx * size, top + row * lineHeight, fontSize);
+        })
+        .join("");
+    })
+    .join("");
+
+  // A red dashed line from where each moved graha was yesterday to where it
+  // is now, ending in an arrowhead and a red ring around its new label.
+  const moves = [...centers.entries()]
+    .filter(([key]) => key.endsWith(":was"))
+    .map(([key, [wx, wy]]) => {
+      const now = centers.get(key.replace(/:was$/, ":now"));
+      if (!now) return "";
+      const [nx, ny] = now;
+      const ringR = fontSize * 0.75;
+      const dist = Math.hypot(nx - wx, ny - wy);
+      if (dist < ringR * 2) return "";
+      const ux = (nx - wx) / dist;
+      const uy = (ny - wy) / dist;
+      const sx = wx + ux * fontSize * 0.7;
+      const sy = wy + uy * fontSize * 0.7;
+      const ex = nx - ux * ringR;
+      const ey = ny - uy * ringR;
+      const head = fontSize * 0.35;
+      const lineWidth = Math.max(1.2, fontSize * 0.08);
+      return `
+    <line x1="${sx.toFixed(1)}" y1="${sy.toFixed(1)}" x2="${ex.toFixed(1)}" y2="${ey.toFixed(1)}" stroke="${MOVED_COLOR}" stroke-width="${lineWidth.toFixed(1)}" stroke-dasharray="${(fontSize * 0.3).toFixed(1)} ${(fontSize * 0.2).toFixed(1)}" stroke-linecap="round" />
+    <path d="M${ex.toFixed(1)} ${ey.toFixed(1)} L${(ex - ux * head - uy * head * 0.6).toFixed(1)} ${(ey - uy * head + ux * head * 0.6).toFixed(1)} L${(ex - ux * head + uy * head * 0.6).toFixed(1)} ${(ey - uy * head - ux * head * 0.6).toFixed(1)} Z" fill="${MOVED_COLOR}" />
+    <circle cx="${nx.toFixed(1)}" cy="${ny.toFixed(1)}" r="${ringR.toFixed(1)}" fill="none" stroke="${MOVED_COLOR}" stroke-width="${lineWidth.toFixed(1)}" />`;
     })
     .join("");
 
@@ -228,5 +263,6 @@ export function kundliChartMarkup(x0: number, y0: number, size: number, kundli: 
     <path d="${lines.join(" ")}" fill="none" stroke="#f7c56a" stroke-opacity="0.85" stroke-width="${stroke.toFixed(1)}" />
     ${numbers}
     ${labels}
+    ${moves}
   </g>`;
 }

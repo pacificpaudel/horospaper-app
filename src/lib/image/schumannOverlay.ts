@@ -77,6 +77,17 @@ export function graphChrome(l: number, cropped: boolean): GraphChrome {
 export const chromeHeight = (c: GraphChrome) => c.padTop + c.titleRow + c.dateRow + c.hourRow + c.padBottom;
 export const chromeWidth = (c: GraphChrome) => c.padX * 2 + c.axisW;
 
+/** The graph's base label size for a panel `boxWidth` wide. */
+export function graphLabelSize(boxWidth: number): number {
+  return Math.max(9, boxWidth * 0.028);
+}
+
+/** Panel height for a graph `boxWidth` wide: its labels plus a 2:1 plot (the source's own ratio if uncropped). */
+export function graphHeightFor(boxWidth: number, graph: SchumannGraph): number {
+  const c = graphChrome(graphLabelSize(boxWidth), graph.cropped);
+  return chromeHeight(c) + (boxWidth - chromeWidth(c)) / (graph.cropped ? 2 : graph.width / graph.height);
+}
+
 export function buildGaugeMarkup(cx: number, cy: number, d: number, score: number): string {
   const s = d / 260;
   const color = levelColor(score);

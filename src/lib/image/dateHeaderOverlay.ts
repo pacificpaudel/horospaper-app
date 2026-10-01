@@ -69,16 +69,29 @@ function panelRect(contentWidth: number, centerX: number, top: number, bottom: n
  * instead of blue, reading as a distinct "today's intent" callout rather
  * than part of the date itself.
  */
+export interface DateHeader {
+  markup: string;
+  /** The weekday + date panel. */
+  dateBox: { x: number; y: number; w: number; h: number };
+  /** Bottom and right edges of everything drawn (the tags panel when `intent` is given). */
+  bottom: number;
+  right: number;
+}
+
+/**
+ * `insertHeight` leaves that much room between the date panel and the
+ * tags panel, for something drawn right under the date (the Schumann
+ * graph -- see compositeOverlay.ts).
+ */
+export function buildDateHeader(width: number, height: number, generationDate: string, intent?: DailyIntent, insertHeight = 0): DateHeader {
+  return dateHeaderLayout(width, height, generationDate, intent, insertHeight);
+}
+
 export function buildDateHeaderMarkup(width: number, height: number, generationDate: string, intent?: DailyIntent): string {
   return dateHeaderLayout(width, height, generationDate, intent).markup;
 }
 
-/** Bottom edge of the header (the tags panel when `intent` is given) -- overlays below it stack from here. */
-export function dateHeaderBottom(width: number, height: number, generationDate: string, intent?: DailyIntent): number {
-  return dateHeaderLayout(width, height, generationDate, intent).bottom;
-}
-
-function dateHeaderLayout(width: number, height: number, generationDate: string, intent?: DailyIntent): { markup: string; bottom: number } {
+function dateHeaderLayout(width: number, height: number, generationDate: string, intent?: DailyIntent, insertHeight = 0): DateHeader {
   const { weekday, dateLine } = describeDate(generationDate);
   const minDim = Math.min(width, height);
   const centerX = width / 2;
@@ -99,6 +112,9 @@ function dateHeaderLayout(width: number, height: number, generationDate: string,
   const backdropTop = topMargin - padTop;
   const backdropBottom = dateY + dateSize + padBottom;
   const backdrop = panelRect(blockWidth, centerX, backdropTop, backdropBottom, dateSize);
+  const boxPadX = Math.round(dateSize * 1.3); // as in panelRect
+  const dateBox = { x: centerX - blockWidth / 2 - boxPadX, y: backdropTop, w: blockWidth + boxPadX * 2, h: backdropBottom - backdropTop };
+  let right = dateBox.x + dateBox.w;
 
   const markup = [
     backdrop,
@@ -106,19 +122,20 @@ function dateHeaderLayout(width: number, height: number, generationDate: string,
     buildCenteredVectorTextMarkup(dateLine, centerX, dateY, dateSize, dateStyle),
   ];
 
-  let bottom = backdropBottom;
+  let bottom = backdropBottom + insertHeight;
   if (intent) {
     const intentText = `${intent.mood} · ${intent.theme}`.toUpperCase();
     const intentStyle: TextStyle = { ...dateStyle, color: "#f7c56a" };
     const intentSize = fitSize(intentText, dateSize, safeWidth, intentStyle);
-    const intentY = backdropBottom + Math.round(intentSize * 1.4);
+    const intentY = bottom + Math.round(intentSize * 1.4);
     const intentPadTop = Math.round(intentSize * 1.1);
     const intentPadBottom = Math.round(intentSize * 1.1);
     const intentWidth = measureVectorText(intentText, intentSize, intentStyle);
     bottom = intentY + intentSize + intentPadBottom;
+    right = Math.max(right, centerX + intentWidth / 2 + Math.round(intentSize * 1.3));
     const intentPanel = panelRect(intentWidth, centerX, intentY - intentPadTop, bottom, intentSize);
     markup.push(intentPanel, buildCenteredVectorTextMarkup(intentText, centerX, intentY, intentSize, intentStyle));
   }
 
-  return { markup: markup.join(""), bottom };
+  return { markup: markup.join(""), dateBox, bottom, right };
 }
