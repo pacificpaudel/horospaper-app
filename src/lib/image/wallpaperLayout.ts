@@ -1,5 +1,5 @@
 import type { DailyReading } from "@/lib/dailyReading";
-import type { ShapedText } from "./devanagariShaper";
+import { shapeDevanagariText, ShapedText } from "./devanagariShaper";
 import { luckMeterTop } from "./luckMeterOverlay";
 import { diagramBoxes, diagramZone } from "./planetDiagram";
 import { shapePanchangFacts, shapePanchangSummary } from "./panchangOverlay";
@@ -8,7 +8,7 @@ import type { Box } from "./schumannOverlay";
 // Where the gauge and the gochar block go -- everything between the
 // header block (date panel, the Schumann graph right under it, the 2 tags)
 // and the luck meter: the Schumann calmness gauge, and the gochar block (a
-// "TODAY'S GOCHAR" caption with the day's Panchang facts on one line, the
+// "भाग्य कुन्डली / LUCK CHART" caption with the day's Panchang facts on one line, the
 // gochar chart, and the Panchang prediction as a strip below it). Laid out
 // together so neither can overlap the other, the header or the corner
 // diagrams.
@@ -32,6 +32,8 @@ export interface GocharLayout {
   /** Caption backdrop above the chart: title row, then the Panchang facts row. */
   caption: Box;
   titleHeight: number;
+  /** "भाग्य कुन्डली", shaped -- the Devanagari half of the caption's title. */
+  titleText: ShapedText;
   facts: { text: ShapedText; size: number } | null;
   /** The Panchang prediction below the chart, if there is one. */
   strip: { box: Box; lines: ShapedText[]; size: number; lineHeight: number; padY: number } | null;
@@ -55,6 +57,7 @@ async function gocharBlock(opts: {
   minDim: number;
   gap: number;
   facts: ShapedText | null;
+  titleText: ShapedText;
   panchang: DailyReading["panchang"];
 }): Promise<Block> {
   const { cx, size, minDim, facts } = opts;
@@ -83,6 +86,7 @@ async function gocharBlock(opts: {
         size,
         caption: { x: cx - captionW / 2, y: top, w: captionW, h: captionH },
         titleHeight,
+        titleText: opts.titleText,
         facts: facts ? { text: facts, size: factsSize } : null,
         strip: lines.length ? { box: { x: cx - stripW / 2, y: y0 + size + stripGap, w: stripW, h: stripH }, lines, size: lineSize, lineHeight, padY } : null,
       };
@@ -109,6 +113,7 @@ export async function layoutWallpaper(params: {
   const boxes = diagramBoxes(width, height, flush);
   const topZoneBottom = Math.max(...boxes.filter((b) => b.spec.corner.startsWith("top")).map((b) => diagramZone(b).bottom));
   const facts = params.hasKundli ? await shapePanchangFacts(params.panchang) : null;
+  const titleText = await shapeDevanagariText("भाग्य कुन्डली");
   const startY = params.headerBottom + gap;
   const regionBottom = luckTop - gap;
 
@@ -128,7 +133,7 @@ export async function layoutWallpaper(params: {
     if (!params.hasKundli || colW >= minDim * 0.24) {
       let gocharLayout: GocharLayout | null = null;
       if (params.hasKundli) {
-        const blockOpts = { cx: colX0 + colW / 2, maxCaptionWidth: colW, stripWidth: colW, minDim, gap, facts, panchang: params.panchang };
+        const blockOpts = { cx: colX0 + colW / 2, maxCaptionWidth: colW, stripWidth: colW, minDim, gap, facts, titleText, panchang: params.panchang };
         let size = Math.min(Math.round(minDim * KUNDLI_FRACTION), colW);
         let block = await gocharBlock({ ...blockOpts, size });
         if (block.height > colH) {
@@ -152,7 +157,7 @@ export async function layoutWallpaper(params: {
     const bottomLeft = boxes.find((b) => b.spec.corner === "bottom-left")!;
     const bottomRight = boxes.find((b) => b.spec.corner === "bottom-right")!;
     const stripWidth = bottomRight.x - gap - (bottomLeft.x + bottomLeft.size + gap);
-    const blockOpts = { cx: width / 2, maxCaptionWidth: width * 0.9, stripWidth, minDim, gap, facts, panchang: params.panchang };
+    const blockOpts = { cx: width / 2, maxCaptionWidth: width * 0.9, stripWidth, minDim, gap, facts, titleText, panchang: params.panchang };
     let size = Math.round(minDim * KUNDLI_FRACTION);
     let block = await gocharBlock({ ...blockOpts, size });
     // Keep room for the gauge above; on a short canvas the chart gives way.

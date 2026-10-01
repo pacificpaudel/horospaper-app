@@ -83,6 +83,8 @@ const GLYPHS: Record<string, Glyph> = {
   // For the kundli's "CURRENT MAHADASHA: SUN (2023-2029)" header.
   ":": { width: 0.2, strokes: [arc(0.1, 0.3, 0.04, 0.04, 0, 360, 8), arc(0.1, 0.85, 0.04, 0.04, 0, 360, 8)] },
   "-": { width: 0.38, strokes: [[[0.05, 0.55], [0.33, 0.55]]] },
+  // For "भाग्य कुन्डली / LUCK CHART".
+  "/": { width: 0.4, strokes: [[[0.36, 0], [0.04, 1]]] },
   // For time zones, e.g. "UTC+7".
   "+": { width: 0.5, strokes: [[[0.05, 0.55], [0.45, 0.55]], [[0.25, 0.35], [0.25, 0.75]]] },
   // Middle dot separator, e.g. "HOPEFUL · PROSPERITY".

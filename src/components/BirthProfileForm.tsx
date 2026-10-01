@@ -395,9 +395,17 @@ export function BirthProfileForm({
           display: flex; align-items: center; justify-content: center;
           flex: 1; min-height: 4.5rem; padding: 0.5rem; border-radius: 0.65rem; background: #080b16;
         }
-        :global(.birth-chart-kundli) { display: flex; align-items: flex-start; gap: 0.5rem; width: 100%; justify-content: center; }
-        :global(.birth-chart-kundli img) { width: min(100%, 12rem); aspect-ratio: 1; display: block; border-radius: 0.4rem; }
-        :global(.birth-chart-sign-badge) { font-size: 1.6rem; }
+        :global(.birth-chart-kundli-section) {
+          grid-column: 1 / -1;
+          display: flex; flex-direction: column; align-items: center; gap: 0.6rem;
+          padding: 0.75rem; border-radius: 0.65rem; background: #080b16;
+        }
+        :global(.birth-chart-kundli-title) {
+          width: 100%; text-align: center; font-size: 1rem; font-weight: 600; color: #f7c56a;
+          padding-bottom: 0.5rem; border-bottom: 1px solid rgba(247, 197, 106, 0.28);
+        }
+        :global(.birth-chart-kundli) { display: flex; width: 100%; justify-content: center; }
+        :global(.birth-chart-kundli img) { width: min(100%, 26rem); aspect-ratio: 1; display: block; border-radius: 0.4rem; }
         :global(.birth-chart-planet) { width: 4rem; height: 4rem; }
         :global(.birth-chart-sign) { font-size: 2.6rem; line-height: 1; color: #f7c56a; }
         :global(.birth-chart-note) { grid-column: 1 / -1; font-size: 0.72rem; color: #b8b2a4; }
@@ -563,19 +571,7 @@ function BirthChartPanel({ chart }: { chart: BirthChartView }) {
       label: "Horoscope sign (rashi)",
       value: `${snapshot.rashi.name} · ${snapshot.rashi.nepali} (${snapshot.rashi.sign})`,
       // U+FE0E asks for the plain text glyph rather than a colored emoji.
-      visual: chart.chartSvg ? (
-        <div className="birth-chart-kundli">
-          {/* An <img> (not inline markup) so a third-party SVG can never run script in the page. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(chart.chartSvg)}`}
-            alt={`Birth chart (kundli), North Indian style, Moon in ${snapshot.rashi.sign}`}
-          />
-          <span className="birth-chart-sign birth-chart-sign-badge" aria-hidden="true">{snapshot.rashiSymbol}{"\uFE0E"}</span>
-        </div>
-      ) : (
-        <span className="birth-chart-sign" aria-hidden="true">{snapshot.rashiSymbol}{"\uFE0E"}</span>
-      ),
+      visual: <span className="birth-chart-sign" aria-hidden="true">{snapshot.rashiSymbol}{"\uFE0E"}</span>,
     },
     {
       label: "Moon at birth",
@@ -595,6 +591,22 @@ function BirthChartPanel({ chart }: { chart: BirthChartView }) {
           <div className="birth-chart-visual">{row.visual}</div>
         </div>
       ))}
+      {/* The birth chart (janma kundli) gets its own row below the planet
+          positions, titled so it isn't mistaken for the wallpaper's chart,
+          which shows today's planets (the Luck Chart). */}
+      {chart.chartSvg && (
+        <section className="birth-chart-kundli-section" aria-label="Birth chart">
+          <h3 className="birth-chart-kundli-title">जन्म कुन्डली / Birth Chart</h3>
+          <div className="birth-chart-kundli">
+            {/* An <img> (not inline markup) so a third-party SVG can never run script in the page. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(chart.chartSvg)}`}
+              alt={`Birth chart (kundli), North Indian style, Moon in ${snapshot.rashi.sign}`}
+            />
+          </div>
+        </section>
+      )}
       {chart.timeMissing ? (
         <p className="birth-chart-warning" role="status">
           {possibleRashis.length > 1

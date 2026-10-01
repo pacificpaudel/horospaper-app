@@ -3,7 +3,7 @@ import { shapeDevanagariLines, shapeDevanagariText, ShapedText } from "./devanag
 
 // The day's Panchang on the wallpaper, as two pieces of the gochar block
 // (see wallpaperLayout.ts): its facts as one comma-separated line right
-// under the "TODAY'S GOCHAR" caption, and the LLM's interpretation of
+// under the "भाग्य कुन्डली / LUCK CHART" caption, and the LLM's interpretation of
 // those facts as a wide strip below the chart. Facts (tithi/nakshatra/yoga,
 // in Devanagari -- see panchang.ts's language: "hi") come straight from
 // freeastroapi.com; the summary is shown only when that interpretation
