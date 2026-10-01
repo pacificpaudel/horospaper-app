@@ -24,6 +24,8 @@ const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "
 const TRACK_COLOR = "#1b1f32"; // hsl(230, 30%, 15%)
 const DIM_DOT_COLOR = "#2d3353"; // hsl(230, 30%, 25%)
 const MUTED_COLOR = "#a3acc6";
+/** The gauge's level word ("CALM", ...) under the score. */
+const LEVEL_TEXT_COLOR = "#ff4d4d";
 const NOW_COLOR = "#ff4d4d";
 
 /** This hour's snapshot, plus who it's drawn for: their time zone and the render time. */
@@ -107,7 +109,10 @@ export function buildGaugeMarkup(cx: number, cy: number, d: number, score: numbe
   const numberText = String(score);
   const numberSize = d * 0.28;
   const levelText = schumannLevel(score).toUpperCase();
-  const levelSize = d * 0.065;
+  // The level ("CALM", "INTENSE", ...) in red under the number, as large
+  // as fits inside the ring.
+  const levelStyle: TextStyle = { color: LEVEL_TEXT_COLOR, strokeWidth: 0.2, tracking: 0.18 };
+  const levelSize = Math.min(d * 0.1, (d * 0.72 * d * 0.1) / measureVectorText(levelText, d * 0.1, levelStyle));
   const contentHeight = numberSize + levelSize * 0.9 + levelSize;
   const numberTop = cy - contentHeight / 2;
   const levelTop = numberTop + numberSize + levelSize * 0.9;
@@ -130,7 +135,7 @@ export function buildGaugeMarkup(cx: number, cy: number, d: number, score: numbe
     </g>
     <g filter="url(#srGaugeBlur)" opacity="0.8">${buildCenteredVectorTextMarkup(numberText, cx, numberTop, numberSize, numberStyle)}</g>
     ${buildCenteredVectorTextMarkup(numberText, cx, numberTop, numberSize, numberStyle)}
-    ${buildCenteredVectorTextMarkup(levelText, cx, levelTop, levelSize, { color: MUTED_COLOR, strokeWidth: 0.16, tracking: 0.3 })}
+    ${buildCenteredVectorTextMarkup(levelText, cx, levelTop, levelSize, levelStyle)}
   </g>`;
 }
 

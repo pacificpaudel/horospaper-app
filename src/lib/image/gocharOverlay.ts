@@ -174,7 +174,7 @@ export function buildGocharMarkup(layout: GocharLayout, kundli: KundliData, onDa
     legend ? buildVectorTextMarkup(legend, textLeft + devanagariWidth + latinWidth, textTop, textSize, legendStyle) : "",
     facts ? devanagariMarkup(facts.text, centerX, caption.y + layout.titleHeight + (caption.h - layout.legendHeight - layout.titleHeight - facts.size) / 2 - facts.size * 0.15, facts.size, PANCHANG_FACTS_COLOR, "center") : "",
     qualityLegend(centerX, caption.y + caption.h - layout.legendHeight, layout.legendHeight),
-    kundliChartMarkup(x0, y0, size, today, null, yesterday, colorFor, houseFill),
+    kundliChartMarkup(x0, y0, size, today, null, yesterday, colorFor, houseFill, natalMoonSign),
     layout.analysis && natalMoonSign !== undefined ? analysisMarkup(layout.analysis, today.planets.map((p) => p.name), allHouses, natalMoonSign) : "",
   ];
   if (strip) {

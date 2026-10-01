@@ -1,7 +1,7 @@
 import { StructuredAstrologyData } from "@/lib/astrology";
 import { buildPlanetDiagramsMarkup, buildPlanetNamesMarkup, diagramBoxes, diagramZone } from "./planetDiagram";
 import { buildLuckMeterMarkup } from "./luckMeterOverlay";
-import { buildDateHeader } from "./dateHeaderOverlay";
+import { buildDateHeader, shapeNepaliWeekday } from "./dateHeaderOverlay";
 import { Box, buildGaugeMarkup, buildGraphMarkup, graphHeightFor, graphLabelSize, SchumannView } from "./schumannOverlay";
 import { buildGalaxyMarkup } from "./galaxyOverlay";
 import { buildGocharMarkup } from "./gocharOverlay";
@@ -54,7 +54,8 @@ export async function buildOverlayLayers(params: {
   // The Schumann graph sits right under the weekday/date panel, exactly as
   // wide as it -- narrowed only where it would run into a top corner
   // diagram (or its name) -- with the 2 tags moving down below it.
-  const dateBox = buildDateHeader(width, height, date).dateBox;
+  const nepaliWeekday = await shapeNepaliWeekday(date);
+  const dateBox = buildDateHeader(width, height, date, undefined, 0, nepaliWeekday).dateBox;
   const topBoxes = diagramBoxes(width, height, flush).filter((b) => b.spec.corner.startsWith("top"));
   let graphBox: Box | null = null;
   if (graph) {
@@ -68,7 +69,7 @@ export async function buildOverlayLayers(params: {
     }
     graphBox = { x: x0, y, w: x1 - x0, h: graphHeightFor(x1 - x0, graph) };
   }
-  const header = buildDateHeader(width, height, date, tags, graphBox ? graphBox.h + gap * 2 : 0);
+  const header = buildDateHeader(width, height, date, tags, graphBox ? graphBox.h + gap * 2 : 0, nepaliWeekday);
 
   // The calmness gauge and the person's zodiac sign sit either side of the
   // weekday/date panel -- the gauge between it and the Sun diagram, the sign

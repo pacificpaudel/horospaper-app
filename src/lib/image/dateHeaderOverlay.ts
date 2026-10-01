@@ -1,4 +1,6 @@
 import { buildCenteredVectorTextMarkup, measureVectorText, TextStyle } from "./vectorFont";
+import { shapeDevanagariText, ShapedText } from "./devanagariShaper";
+import { devanagariMarkup } from "./panchangOverlay";
 
 const WEEKDAYS = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
 const MONTHS = [
@@ -82,11 +84,24 @@ export interface DateHeader {
  * tags panel, for something drawn right under the date (the Schumann
  * graph -- see compositeOverlay.ts).
  */
-export function buildDateHeader(width: number, height: number, generationDate: string, tags?: string[], insertHeight = 0): DateHeader {
-  return dateHeaderLayout(width, height, generationDate, tags, insertHeight);
+export function buildDateHeader(width: number, height: number, generationDate: string, tags?: string[], insertHeight = 0, nepaliWeekday?: ShapedText | null): DateHeader {
+  return dateHeaderLayout(width, height, generationDate, tags, insertHeight, nepaliWeekday ?? null);
 }
 
-function dateHeaderLayout(width: number, height: number, generationDate: string, tags?: string[], insertHeight = 0): DateHeader {
+/** Nepali weekday names, Sunday first -- shaped by the caller (see shapeNepaliWeekday). */
+const NEPALI_WEEKDAYS = ["आइतबार", "सोमबार", "मंगलबार", "बुधबार", "बिहिबार", "शुक्रबार", "शनिबार"];
+
+/** The Nepali name of `generationDate`'s weekday, shaped for buildDateHeader. */
+export async function shapeNepaliWeekday(generationDate: string): Promise<ShapedText | null> {
+  const [year, month, day] = generationDate.split("-").map(Number);
+  try {
+    return await shapeDevanagariText(NEPALI_WEEKDAYS[new Date(Date.UTC(year, month - 1, day, 12)).getUTCDay()]);
+  } catch {
+    return null;
+  }
+}
+
+function dateHeaderLayout(width: number, height: number, generationDate: string, tags: string[] | undefined, insertHeight: number, nepaliWeekday: ShapedText | null): DateHeader {
   const { weekday, dateLine } = describeDate(generationDate);
   const minDim = Math.min(width, height);
   const centerX = width / 2;
@@ -94,28 +109,40 @@ function dateHeaderLayout(width: number, height: number, generationDate: string,
 
   const weekdayStyle: TextStyle = { color: "#39e991", opacity: 0.92, strokeWidth: 0.09, tracking: 0.34 };
   const dateStyle: TextStyle = { color: "#4fb8f7", opacity: 0.94, strokeWidth: 0.1, tracking: 0.28 };
-
-  const weekdaySize = fitSize(weekday, minDim * 0.05, safeWidth, weekdayStyle);
   const dateSize = fitSize(dateLine, minDim * 0.022, safeWidth, dateStyle);
-
-  const topMargin = Math.round(minDim * 0.05);
-  const dateY = topMargin + weekdaySize + dateSize * 2; // ~2 lines' gap below the weekday name
-
-  const blockWidth = Math.max(measureVectorText(weekday, weekdaySize, weekdayStyle), measureVectorText(dateLine, dateSize, dateStyle));
   const padTop = Math.round(dateSize * 1.1);
   const padBottom = Math.round(dateSize * 1.1);
-  const backdropTop = topMargin - padTop;
-  const backdropBottom = dateY + dateSize + padBottom;
-  const backdrop = panelRect(blockWidth, centerX, backdropTop, backdropBottom, dateSize);
+  // The panel sits close to the top edge.
+  const backdropTop = Math.round(minDim * 0.015);
+  const markup: string[] = [];
+  let y = backdropTop + padTop;
+  let blockWidth = measureVectorText(dateLine, dateSize, dateStyle);
+
+  if (nepaliWeekday) {
+    // The Nepali day name large, the English one small under it. Devanagari
+    // matras reach ~0.25 em above the headline and ~0.2 em below the baseline.
+    const nepaliSize = Math.min(minDim * 0.075, safeWidth / nepaliWeekday.width);
+    const englishStyle: TextStyle = { ...weekdayStyle, opacity: 0.85, tracking: 0.3 };
+    const englishSize = fitSize(weekday, dateSize * 1.05, safeWidth, englishStyle);
+    const nepaliTop = y + nepaliSize * 0.22;
+    markup.push(devanagariMarkup(nepaliWeekday, centerX, nepaliTop, nepaliSize, weekdayStyle.color!, "center"));
+    y = nepaliTop + nepaliSize * 0.95 + dateSize * 0.35;
+    markup.push(buildCenteredVectorTextMarkup(weekday, centerX, y, englishSize, englishStyle));
+    y += englishSize + dateSize * 1.1;
+    blockWidth = Math.max(blockWidth, nepaliWeekday.width * nepaliSize, measureVectorText(weekday, englishSize, englishStyle));
+  } else {
+    const weekdaySize = fitSize(weekday, minDim * 0.05, safeWidth, weekdayStyle);
+    markup.push(buildCenteredVectorTextMarkup(weekday, centerX, y, weekdaySize, weekdayStyle));
+    y += weekdaySize + dateSize * 2; // ~2 lines' gap below the weekday name
+    blockWidth = Math.max(blockWidth, measureVectorText(weekday, weekdaySize, weekdayStyle));
+  }
+  markup.push(buildCenteredVectorTextMarkup(dateLine, centerX, y, dateSize, dateStyle));
+
+  const backdropBottom = y + dateSize + padBottom;
+  markup.unshift(panelRect(blockWidth, centerX, backdropTop, backdropBottom, dateSize));
   const boxPadX = Math.round(dateSize * 1.3); // as in panelRect
   const dateBox = { x: centerX - blockWidth / 2 - boxPadX, y: backdropTop, w: blockWidth + boxPadX * 2, h: backdropBottom - backdropTop };
   const right = dateBox.x + dateBox.w;
-
-  const markup = [
-    backdrop,
-    buildCenteredVectorTextMarkup(weekday, centerX, topMargin, weekdaySize, weekdayStyle),
-    buildCenteredVectorTextMarkup(dateLine, centerX, dateY, dateSize, dateStyle),
-  ];
 
   let bottom = backdropBottom + insertHeight;
   if (tags?.length) {

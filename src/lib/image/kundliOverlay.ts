@@ -80,6 +80,33 @@ const HOUSE_ICONS: [number, number][] = [
   [0.75, 0.045],
 ];
 
+// The Luck Chart's layout (fractions of the chart's side), houses 1-12: its
+// three numbers -- house icon, rashi number, count from the natal Moon --
+// each in a different corner of the house. The rashi stays by the inner
+// corner, where the North-Indian chart traditionally writes it. Triangles:
+// the icon in the chart-corner end, the Moon count in the end at the middle
+// of the chart's edge. Diamonds: the icon in the outer corner, the Moon
+// count in one side corner (turning with the house: left, bottom, right, top).
+const LUCK_LAYOUT: { icon: [number, number]; sign: [number, number]; moon: [number, number] }[] = [
+  { icon: [0.5, 0.075], sign: [0.5, 0.42], moon: [0.355, 0.25] },
+  { icon: [0.135, 0.045], sign: [0.25, 0.2], moon: [0.365, 0.045] },
+  { icon: [0.045, 0.135], sign: [0.2, 0.25], moon: [0.045, 0.365] },
+  { icon: [0.075, 0.5], sign: [0.42, 0.5], moon: [0.25, 0.645] },
+  { icon: [0.045, 0.865], sign: [0.2, 0.75], moon: [0.045, 0.635] },
+  { icon: [0.135, 0.955], sign: [0.25, 0.8], moon: [0.365, 0.955] },
+  { icon: [0.5, 0.925], sign: [0.5, 0.58], moon: [0.645, 0.75] },
+  { icon: [0.865, 0.955], sign: [0.75, 0.8], moon: [0.635, 0.955] },
+  { icon: [0.955, 0.865], sign: [0.8, 0.75], moon: [0.955, 0.635] },
+  { icon: [0.925, 0.5], sign: [0.58, 0.5], moon: [0.75, 0.355] },
+  { icon: [0.955, 0.135], sign: [0.8, 0.25], moon: [0.955, 0.365] },
+  { icon: [0.865, 0.045], sign: [0.75, 0.2], moon: [0.635, 0.045] },
+];
+/** How much larger the Luck Chart draws its three numbers than the birth chart. */
+const LUCK_NUMBER_SCALE = 1.3;
+
+/** Background of the count-from-Moon circles (Luck Chart only). */
+export const MOON_COUNT_COLOR = "#2fa95a";
+
 const signOf = (longitude: number) => Math.floor(normalizeDegrees(longitude) / 30) + 1;
 
 /** Same kundli from the app's own (sidereal) natal chart, for when the API isn't available. */
@@ -210,7 +237,9 @@ export function kundliChartMarkup(
   /** Each graha label's colour (by English name); white when not given. */
   colorFor?: (planetName: string) => string,
   /** A background tint for house i (0-based, house 1 = 0), or null for none. */
-  houseFill?: (houseIndex: number) => string | null
+  houseFill?: (houseIndex: number) => string | null,
+  /** The natal Moon sign: when given, each house also shows its count from it in a green circle. */
+  moonSign?: number
 ): string {
   const P = (fx: number, fy: number) => `${(x0 + fx * size).toFixed(1)} ${(y0 + fy * size).toFixed(1)}`;
 
@@ -229,7 +258,13 @@ export function kundliChartMarkup(
     : "";
 
   const fontSize = size * 0.072;
-  const numberSize = size * 0.03;
+  // The Luck Chart (with a natal Moon sign) sets its three numbers larger,
+  // each in its own corner of the house (LUCK_LAYOUT).
+  const luck = moonSign !== undefined;
+  const scale = luck ? LUCK_NUMBER_SCALE : 1;
+  const iconAt = (i: number) => (luck ? LUCK_LAYOUT[i].icon : HOUSE_ICONS[i]);
+  const signAt = (i: number) => (luck ? LUCK_LAYOUT[i].sign : HOUSES[i].num);
+  const numberSize = size * 0.03 * scale;
   const numberStyle: TextStyle = { color: "#f7c56a", strokeWidth: 0.15, tracking: 0.06 };
   const houseNumberStyle: TextStyle = { color: "#e6e9f0", strokeWidth: 0.16, tracking: 0.06 };
 
@@ -258,8 +293,8 @@ export function kundliChartMarkup(
       const [fx, fy] = HOUSES[i].label;
       const lineHeight = fontSize * 1.08;
       // Never above the house's own icon when that sits over the labels.
-      const iconFy = HOUSE_ICONS[i][1];
-      const belowIcon = iconFy < fy ? y0 + (iconFy + ICON_H / 2 + 0.008) * size : -Infinity;
+      const iconFy = iconAt(i)[1];
+      const belowIcon = iconFy < fy ? y0 + (iconFy + (ICON_H * scale) / 2 + 0.008) * size : -Infinity;
       // The wide, shallow triangles (houses 2, 6, 8, 12) put labels side by
       // side, two to a row; the others stack them one per line.
       const perRow = WIDE_HOUSES.has(i) ? 2 : 1;
@@ -313,9 +348,10 @@ export function kundliChartMarkup(
 
   // Rashi (sign) number of each house, in a gold circle near the chart's
   // center, where the North-Indian chart traditionally writes it.
-  const circleR = size * 0.03;
+  const circleR = size * 0.03 * scale;
   const lineW = Math.max(1, size * 0.004);
-  const numbers = HOUSES.map(({ num: [fx, fy] }, i) => {
+  const numbers = HOUSES.map((_, i) => {
+    const [fx, fy] = signAt(i);
     const sign = ((kundli.ascendantSign - 1 + i) % 12) + 1;
     const cx = x0 + fx * size;
     const cy = y0 + fy * size;
@@ -324,11 +360,12 @@ export function kundliChartMarkup(
 
   // House number of each house, in a small house-shaped icon in its own
   // section (house 1 is always the top diamond, counter-clockwise from there).
-  const iconW = size * 0.068;
-  const iconH = size * ICON_H;
+  const iconW = size * 0.068 * scale;
+  const iconH = size * ICON_H * scale;
   const roofH = iconH * 0.42;
-  const houseNumberSize = size * 0.029;
-  const houseIcons = HOUSE_ICONS.map(([fx, fy], i) => {
+  const houseNumberSize = size * 0.029 * scale;
+  const houseIcons = HOUSE_ICONS.map((_, i) => {
+    const [fx, fy] = iconAt(i);
     const cx = x0 + fx * size;
     const top = y0 + fy * size - iconH / 2;
     const left = (cx - iconW / 2).toFixed(1);
@@ -338,6 +375,22 @@ export function kundliChartMarkup(
     const shape = `M${cx.toFixed(1)} ${top.toFixed(1)} L${right} ${eave.toFixed(1)} L${right} ${bottom.toFixed(1)} L${left} ${bottom.toFixed(1)} L${left} ${eave.toFixed(1)} Z`;
     return `<path d="${shape}" fill="#080b16" stroke="#c9cfdc" stroke-width="${lineW.toFixed(1)}" stroke-linejoin="round" />${buildCenteredVectorTextMarkup(String(i + 1), cx, (eave + bottom) / 2 - houseNumberSize / 2, houseNumberSize, houseNumberStyle)}`;
   }).join("");
+
+  // House counted from the natal Moon sign (what gochar results are read
+  // from), in a green circle a little larger than the rashi number's.
+  const moonCountR = size * 0.036 * scale;
+  const moonCountSize = size * 0.036 * scale;
+  const moonCountStyle: TextStyle = { color: "#ffffff", strokeWidth: 0.17, tracking: 0.04 };
+  const moonCounts =
+    moonSign === undefined
+      ? ""
+      : LUCK_LAYOUT.map(({ moon: [fx, fy] }, i) => {
+          const sign = ((kundli.ascendantSign - 1 + i) % 12) + 1;
+          const count = ((sign - moonSign + 12) % 12) + 1;
+          const cx = x0 + fx * size;
+          const cy = y0 + fy * size;
+          return `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${moonCountR.toFixed(1)}" fill="${MOON_COUNT_COLOR}" stroke="#080b16" stroke-width="${lineW.toFixed(1)}" />${buildCenteredVectorTextMarkup(String(count), cx, cy - moonCountSize / 2, moonCountSize, moonCountStyle)}`;
+        }).join("");
 
   // Header strip: "CURRENT MAHADASHA" over e.g. "SUN (2023-2029)".
   const dasha = onDate ? mahadashaOn(kundli.mahadashas, onDate) : null;
@@ -373,6 +426,7 @@ export function kundliChartMarkup(
     <path d="${lines.join(" ")}" fill="none" stroke="#f7c56a" stroke-opacity="0.85" stroke-width="${stroke.toFixed(1)}" />
     ${houseIcons}
     ${numbers}
+    ${moonCounts}
     ${labels}
     ${moves}
   </g>`;
