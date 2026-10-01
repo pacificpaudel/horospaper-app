@@ -19,8 +19,8 @@ import type { Box } from "./schumannOverlay";
 // landscape canvas too narrow for that column falls back to the portrait
 // arrangement.
 
-/** 20% larger than the kundli's original 26% of the canvas's short side. */
-const KUNDLI_FRACTION = 0.312;
+/** The kundli: 20% larger than its original 26% of the short side, then 10% more. */
+const KUNDLI_FRACTION = 0.343;
 /** The calmness gauge's diameter, as a share of the canvas's short side. */
 const GAUGE_FRACTION = 0.11;
 
@@ -32,6 +32,8 @@ export interface GocharLayout {
   /** Caption backdrop above the chart: title row, then the Panchang facts row. */
   caption: Box;
   titleHeight: number;
+  /** The good / neutral / bad colour legend's row, at the caption's bottom. */
+  legendHeight: number;
   /** "भाग्य कुन्डली", shaped -- the Devanagari half of the caption's title. */
   titleText: ShapedText;
   facts: { text: ShapedText; size: number } | null;
@@ -59,15 +61,19 @@ async function gocharBlock(opts: {
   facts: ShapedText | null;
   titleText: ShapedText;
   panchang: DailyReading["panchang"];
+  /** Shrinks the Panchang facts and prediction text along with a narrowed chart (1 = full size). */
+  textScale?: number;
 }): Promise<Block> {
   const { cx, size, minDim, facts } = opts;
   const titleHeight = size * 0.1;
   const factsPad = minDim * 0.03;
-  const factsSize = facts ? Math.min(minDim * 0.022, (opts.maxCaptionWidth - factsPad * 2) / facts.width) : 0;
-  const captionH = titleHeight + (facts ? factsSize * 1.75 : 0);
+  const textScale = opts.textScale ?? 1;
+  const factsSize = facts ? Math.min(minDim * 0.022 * textScale, (opts.maxCaptionWidth - factsPad * 2) / facts.width) : 0;
+  const legendHeight = titleHeight * 0.8;
+  const captionH = titleHeight + (facts ? factsSize * 1.75 : 0) + legendHeight;
   const captionW = Math.min(opts.maxCaptionWidth, Math.max(size, facts ? facts.width * factsSize + factsPad * 2 : 0));
 
-  const lineSize = minDim * 0.025;
+  const lineSize = minDim * 0.025 * textScale;
   const lineHeight = lineSize * 1.55;
   const padY = lineSize * 0.55;
   const padX = lineSize * 1.1;
@@ -86,6 +92,7 @@ async function gocharBlock(opts: {
         size,
         caption: { x: cx - captionW / 2, y: top, w: captionW, h: captionH },
         titleHeight,
+        legendHeight,
         titleText: opts.titleText,
         facts: facts ? { text: facts, size: factsSize } : null,
         strip: lines.length ? { box: { x: cx - stripW / 2, y: y0 + size + stripGap, w: stripW, h: stripH }, lines, size: lineSize, lineHeight, padY } : null,
@@ -130,10 +137,14 @@ export async function layoutWallpaper(params: {
     const colW = width - (boxes[0].size + gap * 2) - colX0;
     const colH = regionBottom - colTop;
 
-    if (!params.hasKundli || colW >= minDim * 0.24) {
+    // On a narrower desktop the column is narrower than the chart's ideal
+    // size: rather than switching to the portrait stack, the whole block --
+    // chart, caption text and prediction text -- shrinks in proportion.
+    if (!params.hasKundli || colW >= minDim * 0.15) {
       let gocharLayout: GocharLayout | null = null;
       if (params.hasKundli) {
-        const blockOpts = { cx: colX0 + colW / 2, maxCaptionWidth: colW, stripWidth: colW, minDim, gap, facts, titleText, panchang: params.panchang };
+        const textScale = Math.max(0.6, Math.min(1, colW / (minDim * KUNDLI_FRACTION)));
+        const blockOpts = { cx: colX0 + colW / 2, maxCaptionWidth: colW, stripWidth: colW, minDim, gap, facts, titleText, panchang: params.panchang, textScale };
         let size = Math.min(Math.round(minDim * KUNDLI_FRACTION), colW);
         let block = await gocharBlock({ ...blockOpts, size });
         if (block.height > colH) {

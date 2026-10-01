@@ -89,7 +89,7 @@ export function kundliFromNatal(natal: NatalChart): KundliData | null {
 }
 
 /** Where a graha was yesterday, before it changed sign (see gocharOverlay.ts). */
-export const MOVED_COLOR = "#ff4d4d";
+export const MOVED_COLOR = "#a9b1c4";
 
 const GOCHAR_PLANETS: { name: string; key: PlanetKey }[] = [
   { name: "Sun", key: "sun" },
@@ -183,7 +183,16 @@ function devanagariLabelMarkup(label: Label, cx: number, top: number, fontSize: 
  * a day earlier), each graha whose sign changed also gets a red,
  * struck-through label in the house it was in.
  */
-export function kundliChartMarkup(x0: number, y0: number, size: number, kundli: KundliData, onDate: string | null, previous?: KundliData): string {
+export function kundliChartMarkup(
+  x0: number,
+  y0: number,
+  size: number,
+  kundli: KundliData,
+  onDate: string | null,
+  previous?: KundliData,
+  /** Each graha label's colour (by English name); white when not given. */
+  colorFor?: (planetName: string) => string
+): string {
   const P = (fx: number, fy: number) => `${(x0 + fx * size).toFixed(1)} ${(y0 + fy * size).toFixed(1)}`;
 
   const stroke = Math.max(1.2, size * 0.006);
@@ -207,7 +216,7 @@ export function kundliChartMarkup(x0: number, y0: number, size: number, kundli: 
     // Nodes always move backwards, so like the API's chart only true
     // planets get the (retrograde) parentheses.
     const retro = planet.retro && planet.name !== "Rahu" && planet.name !== "Ketu";
-    byHouse[house].push({ text, retro, color: "#fdf6e6", planet: planet.name });
+    byHouse[house].push({ text, retro, color: colorFor?.(planet.name) ?? "#fdf6e6", planet: planet.name });
   }
   for (const before of previous?.planets ?? []) {
     const text = NEPALI_LABELS[before.name];

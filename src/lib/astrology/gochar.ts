@@ -19,9 +19,91 @@ const FAVORABLE_HOUSES: Record<Graha, number[]> = {
   jupiter: [2, 5, 7, 9, 11],
   venus: [1, 2, 3, 4, 5, 8, 9, 11, 12],
   saturn: [3, 6, 11],
-  rahu: [3, 6, 11],
-  ketu: [3, 6, 11],
+  // Phaladeepika ch. 26 sloka 24: Rahu in the 10th brings "gain"; Ketu
+  // gives results similar to Rahu (see TRANSIT_RESULTS below).
+  rahu: [3, 6, 10, 11],
+  ketu: [3, 6, 10, 11],
 };
+
+/** How a graha's transit sits in a house counted from the natal Moon sign. */
+export type GocharQuality = "good" | "neutral" | "bad";
+
+// Each graha's transit result in houses 1-12 from the natal Moon sign, per
+// Mantreswara's Phaladeepika, ch. 26 ("Transits of Planets", slokas 9-24):
+// G = the text's favorable houses; for the rest, B where the text names
+// disease/sickness/fever, danger, death, fear, or loss of wealth,
+// position, honour, relatives or children, and N where its result is
+// milder (expenditure, impediments, quarrels, misunderstandings, sorrow,
+// "failure, exhaustion"). Ketu "gives results similar to Rahu" (sloka 2).
+//              houses: 123456789012
+const TRANSIT_RESULTS: Record<Graha, string> = {
+  sun: /*         */ "BBGBBGBBBGGB",
+  moon: /*        */ "GBGBNGGBBGGN",
+  mars: /*        */ "BBGBBGBBBNGB",
+  mercury: /*     */ "BGBGNGNGNGGB",
+  jupiter: /*     */ "NGBBGBGBGBGB",
+  venus: /*       */ "GGGGGBNGGNGG",
+  saturn: /*      */ "BBGBBGBBBBGB",
+  rahu: /*        */ "BBGNBGBBBGGN",
+  ketu: /*        */ "BBGNBGBBBGGN",
+};
+
+// Vedha (obstruction): a favorable transit (key) is cancelled while
+// another graha transits its paired vedha house (value), both counted from
+// the natal Moon -- Phaladeepika ch. 26, slokas 3-8, cross-checked with
+// the standard vedha tables (e.g. Moon's 7th pairs with the 2nd). Rahu and
+// Ketu "are similar to the Sun" (sloka 2), so they share its pairs.
+const SUN_VEDHA: Record<number, number> = { 3: 9, 6: 12, 10: 4, 11: 5 };
+const VEDHA: Record<Graha, Record<number, number>> = {
+  sun: SUN_VEDHA,
+  moon: { 1: 5, 3: 9, 6: 12, 7: 2, 10: 4, 11: 8 },
+  mars: { 3: 12, 6: 9, 11: 5 },
+  mercury: { 2: 5, 4: 3, 6: 9, 8: 1, 10: 8, 11: 12 },
+  jupiter: { 2: 12, 5: 4, 7: 3, 9: 10, 11: 8 },
+  venus: { 1: 8, 2: 7, 3: 1, 4: 10, 5: 9, 8: 5, 9: 11, 11: 6, 12: 3 },
+  saturn: { 3: 12, 6: 9, 11: 5 },
+  rahu: SUN_VEDHA,
+  ketu: SUN_VEDHA,
+};
+
+// Only the seven planets cause vedha (the classical lists name Sun to
+// Saturn), and never between father and son: Sun and Saturn, Moon and
+// Mercury (slokas 3-6).
+const VEDHA_CASTERS: Graha[] = ["sun", "moon", "mars", "mercury", "jupiter", "venus", "saturn"];
+const NO_MUTUAL_VEDHA: [Graha, Graha][] = [
+  ["sun", "saturn"],
+  ["moon", "mercury"],
+];
+
+function isObstructed(graha: Graha, house: number, houses: Partial<Record<Graha, number>>): boolean {
+  const vedhaHouse = VEDHA[graha][house];
+  if (vedhaHouse === undefined) return false;
+  return VEDHA_CASTERS.some(
+    (other) =>
+      other !== graha &&
+      houses[other] === vedhaHouse &&
+      !NO_MUTUAL_VEDHA.some(([x, y]) => (x === graha && y === other) || (x === other && y === graha))
+  );
+}
+
+/**
+ * Good / neutral / bad for a graha (English name, e.g. "Sun", "Rahu") in
+ * `house` (1-12) counted from the natal Moon sign (see TRANSIT_RESULTS).
+ * With `allHouses` (every graha's current house, by English name), a
+ * favorable transit obstructed by vedha reads as neutral -- its good
+ * result is cancelled, not turned bad.
+ */
+export function gocharQuality(planetName: string, house: number, allHouses?: Record<string, number>): GocharQuality {
+  const graha = planetName.toLowerCase() as Graha;
+  const results = TRANSIT_RESULTS[graha];
+  if (!results || house < 1 || house > 12) return "neutral";
+  const code = results[house - 1];
+  if (code === "G") {
+    const houses = Object.fromEntries(Object.entries(allHouses ?? {}).map(([name, h]) => [name.toLowerCase(), h])) as Partial<Record<Graha, number>>;
+    return allHouses && isObstructed(graha, house, houses) ? "neutral" : "good";
+  }
+  return code === "B" ? "bad" : "neutral";
+}
 
 // The Moon sets the day's tone (it changes sign every ~2.5 days); the slow
 // benefic/malefic pair Jupiter and Saturn set the background.
@@ -133,10 +215,14 @@ export function computeGochar(natalMoonSidereal: number, at: Date): GocharReadin
 
   let weighted = 0;
   let totalWeight = 0;
-  const placements = (Object.keys(FAVORABLE_HOUSES) as Graha[]).map((graha) => {
-    const house = houseFrom(natalSign, today[graha]);
-    const favorable = FAVORABLE_HOUSES[graha].includes(house);
-    weighted += (favorable ? 1 : -1) * WEIGHTS[graha];
+  const grahas = Object.keys(FAVORABLE_HOUSES) as Graha[];
+  const houses = Object.fromEntries(grahas.map((graha) => [graha, houseFrom(natalSign, today[graha])])) as Record<Graha, number>;
+  const placements = grahas.map((graha) => {
+    const house = houses[graha];
+    // A favorable transit obstructed by vedha counts as neither for nor against.
+    const obstructed = FAVORABLE_HOUSES[graha].includes(house) && isObstructed(graha, house, houses);
+    const favorable = FAVORABLE_HOUSES[graha].includes(house) && !obstructed;
+    weighted += (favorable ? 1 : obstructed ? 0 : -1) * WEIGHTS[graha];
     totalWeight += WEIGHTS[graha];
     return { graha: grahaLabel(graha), house, favorable };
   });

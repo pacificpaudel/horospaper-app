@@ -10,7 +10,7 @@ import { getSchumannSnapshot } from "@/lib/schumann";
 import type { SchumannView } from "./schumannOverlay";
 import { createHash } from "node:crypto";
 
-const IMAGE_GENERATOR_VERSION = "daily-image-v26";
+const IMAGE_GENERATOR_VERSION = "daily-image-v28";
 
 // Source images (a random-aspect-ratio Openverse photo, OpenAI's fixed
 // portrait size, or the mock SVG's native 4:5) rarely match either wallpaper

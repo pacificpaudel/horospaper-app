@@ -109,7 +109,7 @@ function dateHeaderLayout(width: number, height: number, generationDate: string,
   const backdrop = panelRect(blockWidth, centerX, backdropTop, backdropBottom, dateSize);
   const boxPadX = Math.round(dateSize * 1.3); // as in panelRect
   const dateBox = { x: centerX - blockWidth / 2 - boxPadX, y: backdropTop, w: blockWidth + boxPadX * 2, h: backdropBottom - backdropTop };
-  let right = dateBox.x + dateBox.w;
+  const right = dateBox.x + dateBox.w;
 
   const markup = [
     backdrop,
@@ -119,27 +119,20 @@ function dateHeaderLayout(width: number, height: number, generationDate: string,
 
   let bottom = backdropBottom + insertHeight;
   if (tags?.length) {
+    // All the tags on one line, shrunk to fit inside the date panel's own
+    // width, on a panel exactly that wide -- so the header block is one
+    // neat column.
     const intentStyle: TextStyle = { ...dateStyle, color: "#f7c56a" };
-    // One line, except on a landscape canvas when it would run much wider
-    // than the date panel: then two tags per line, so the header block
-    // stays narrow enough for the gochar column beside it.
-    const oneLine = tags.join(" · ").toUpperCase();
-    const lines =
-      width > height && tags.length > 2 && measureVectorText(oneLine, dateSize, intentStyle) > dateBox.w * 1.15
-        ? [tags.slice(0, 2), tags.slice(2)].map((pair) => pair.join(" · ").toUpperCase())
-        : [oneLine];
-    const intentSize = Math.min(...lines.map((line) => fitSize(line, dateSize, safeWidth, intentStyle)));
-    const lineGap = intentSize * 0.9;
-    const intentY = bottom + Math.round(intentSize * 1.4);
-    const intentPadTop = Math.round(intentSize * 1.1);
-    const intentPadBottom = Math.round(intentSize * 1.1);
-    const intentWidth = Math.max(...lines.map((line) => measureVectorText(line, intentSize, intentStyle)));
-    bottom = intentY + lines.length * intentSize + (lines.length - 1) * lineGap + intentPadBottom;
-    right = Math.max(right, centerX + intentWidth / 2 + Math.round(intentSize * 1.3));
-    const intentPanel = panelRect(intentWidth, centerX, intentY - intentPadTop, bottom, intentSize);
+    const text = tags.join(" · ").toUpperCase();
+    const innerPad = dateBox.w * 0.06;
+    const intentSize = fitSize(text, dateSize, dateBox.w - innerPad * 2, intentStyle);
+    const intentPad = Math.round(Math.max(intentSize, dateSize * 0.75) * 1.1);
+    const panelTop = bottom + Math.round(dateSize * 0.3);
+    const intentY = panelTop + intentPad;
+    bottom = intentY + intentSize + intentPad;
     markup.push(
-      intentPanel,
-      ...lines.map((line, i) => buildCenteredVectorTextMarkup(line, centerX, intentY + i * (intentSize + lineGap), intentSize, intentStyle))
+      `<rect x="${dateBox.x.toFixed(1)}" y="${panelTop.toFixed(1)}" width="${dateBox.w.toFixed(1)}" height="${(bottom - panelTop).toFixed(1)}" rx="${(intentSize * 0.9).toFixed(1)}" fill="#0b1220" fill-opacity="0.48" />`,
+      buildCenteredVectorTextMarkup(text, centerX, intentY, intentSize, intentStyle)
     );
   }
 

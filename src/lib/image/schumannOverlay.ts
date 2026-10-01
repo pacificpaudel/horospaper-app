@@ -105,13 +105,13 @@ export function buildGaugeMarkup(cx: number, cy: number, d: number, score: numbe
     `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${r.toFixed(1)}" fill="none" stroke="${color}" stroke-width="${stroke.toFixed(1)}" stroke-linecap="round" stroke-dasharray="${filled.toFixed(1)} ${circumference.toFixed(1)}" ${extra} />`;
 
   const numberText = String(score);
-  const numberSize = d * 0.17;
+  const numberSize = d * 0.28;
   const levelText = schumannLevel(score).toUpperCase();
-  const levelSize = d * 0.055;
+  const levelSize = d * 0.065;
   const contentHeight = numberSize + levelSize * 0.9 + levelSize;
   const numberTop = cy - contentHeight / 2;
   const levelTop = numberTop + numberSize + levelSize * 0.9;
-  const numberStyle: TextStyle = { color, strokeWidth: 0.13, tracking: 0.08 };
+  const numberStyle: TextStyle = { color, strokeWidth: 0.21, tracking: 0.1 };
 
   return `
   <g>
@@ -130,7 +130,7 @@ export function buildGaugeMarkup(cx: number, cy: number, d: number, score: numbe
     </g>
     <g filter="url(#srGaugeBlur)" opacity="0.8">${buildCenteredVectorTextMarkup(numberText, cx, numberTop, numberSize, numberStyle)}</g>
     ${buildCenteredVectorTextMarkup(numberText, cx, numberTop, numberSize, numberStyle)}
-    ${buildCenteredVectorTextMarkup(levelText, cx, levelTop, levelSize, { color: MUTED_COLOR, strokeWidth: 0.12, tracking: 0.3 })}
+    ${buildCenteredVectorTextMarkup(levelText, cx, levelTop, levelSize, { color: MUTED_COLOR, strokeWidth: 0.16, tracking: 0.3 })}
   </g>`;
 }
 
