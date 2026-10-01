@@ -4,7 +4,7 @@ import { buildLuckMeterMarkup } from "./luckMeterOverlay";
 import { buildDateHeaderMarkup, dateHeaderBottom } from "./dateHeaderOverlay";
 import { buildGaugeMarkup, buildGraphMarkup, SchumannView } from "./schumannOverlay";
 import { buildGalaxyMarkup } from "./galaxyOverlay";
-import { buildGocharMarkup } from "./kundliOverlay";
+import { buildGocharMarkup } from "./gocharOverlay";
 import { layoutWallpaper } from "./wallpaperLayout";
 import type { DailyIntent } from "./dailyIntent";
 import type { KundliData } from "@/lib/astrologyApi";
