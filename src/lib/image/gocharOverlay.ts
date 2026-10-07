@@ -1,5 +1,5 @@
 import type { KundliData } from "@/lib/astrologyApi";
-import { gocharKundli, kundliChartMarkup, MOVED_COLOR, SignStay } from "./kundliOverlay";
+import { gocharKundli, kundliChartMarkup, MOVED_COLOR, SignStay, stayPieMarkup } from "./kundliOverlay";
 import { devanagariMarkup, PANCHANG_FACTS_COLOR, PANCHANG_SUMMARY_COLOR } from "./panchangOverlay";
 import { buildVectorTextMarkup, measureVectorText, TextStyle, wrapVectorText } from "./vectorFont";
 import type { Box } from "./schumannOverlay";
@@ -157,29 +157,36 @@ function analysisMarkup(box: Box, planets: string[], allHouses: Record<string, n
  * `top`; shrinks only if it would overflow `maxW`. (The grey legend used
  * to share the title line, which shrank the whole "LUCK CHART" title.)
  */
-function qualityLegend(cx: number, top: number, h: number, maxW: number, moved: boolean): string {
+function qualityLegend(cx: number, top: number, h: number, maxW: number, moved: boolean, zoom = false): string {
   const style: TextStyle = { face: "clear", color: "#c9cfdc", strokeWidth: 0.12, tracking: 0.14 };
-  const movedStyle: TextStyle = { ...style, color: MOVED_COLOR };
-  const entries = [
-    ...(["good", "neutral", "bad"] as const).map((quality) => ({ label: quality.toUpperCase(), color: QUALITY_COLORS[quality], dash: false })),
-    ...(moved ? [{ label: "LAST POSITION", color: MOVED_COLOR, dash: true }] : []),
+  type Kind = "dot" | "dash" | "pie";
+  const entries: { label: string; color: string; kind: Kind }[] = [
+    ...(["good", "neutral", "bad"] as const).map((quality) => ({ label: quality.toUpperCase(), color: QUALITY_COLORS[quality], kind: "dot" as Kind })),
+    ...(moved ? [{ label: "LAST POSITION", color: MOVED_COLOR, kind: "dash" as Kind }] : []),
+    // Zoomed, the pies carry percentages; say what they are.
+    ...(zoom ? [{ label: "% OF STAY IN SIGN: PASSED / LEFT", color: "#c9cfdc", kind: "pie" as Kind }] : []),
   ];
-  const markerW = (size: number, dash: boolean) => size * (dash ? 1.6 : 1.1);
+  const styleOf = (color: string): TextStyle => ({ ...style, color: color === MOVED_COLOR ? MOVED_COLOR : style.color });
+  const markerW = (size: number, kind: Kind) => size * (kind === "dash" ? 1.6 : kind === "pie" ? 1.45 : 1.1);
   const rowWidth = (size: number) =>
-    entries.reduce((sum, e) => sum + markerW(size, e.dash) + measureVectorText(e.label, size, e.dash ? movedStyle : style), 0) + size * 1.6 * (entries.length - 1);
+    entries.reduce((sum, e) => sum + markerW(size, e.kind) + measureVectorText(e.label, size, styleOf(e.color)), 0) + size * 1.6 * (entries.length - 1);
   const ideal = h * 0.42;
   const size = Math.min(ideal, ideal * ((maxW * 0.96) / rowWidth(ideal)));
   const gap = size * 1.6;
   let x = cx - rowWidth(size) / 2;
   const y = top + (h - size) / 2;
-  const midY = (y + size / 2).toFixed(1);
+  const mid = y + size / 2;
+  const midY = mid.toFixed(1);
   return entries
-    .map(({ label, color, dash }) => {
-      const marker = dash
-        ? `<line x1="${x.toFixed(1)}" y1="${midY}" x2="${(x + size * 1.2).toFixed(1)}" y2="${midY}" stroke="${color}" stroke-width="${Math.max(1, size * 0.14).toFixed(1)}" stroke-dasharray="${(size * 0.3).toFixed(1)} ${(size * 0.2).toFixed(1)}" />`
-        : `<circle cx="${(x + size * 0.38).toFixed(1)}" cy="${midY}" r="${(size * 0.38).toFixed(1)}" fill="${color}" />`;
-      const markup = marker + buildVectorTextMarkup(label, x + markerW(size, dash), y, size, dash ? movedStyle : style);
-      x += markerW(size, dash) + measureVectorText(label, size, dash ? movedStyle : style) + gap;
+    .map(({ label, color, kind }) => {
+      const marker =
+        kind === "dash"
+          ? `<line x1="${x.toFixed(1)}" y1="${midY}" x2="${(x + size * 1.2).toFixed(1)}" y2="${midY}" stroke="${color}" stroke-width="${Math.max(1, size * 0.14).toFixed(1)}" stroke-dasharray="${(size * 0.3).toFixed(1)} ${(size * 0.2).toFixed(1)}" />`
+          : kind === "pie"
+            ? stayPieMarkup(x + size * 0.55, mid, size * 0.55, 0.65)
+            : `<circle cx="${(x + size * 0.38).toFixed(1)}" cy="${midY}" r="${(size * 0.38).toFixed(1)}" fill="${color}" />`;
+      const markup = marker + buildVectorTextMarkup(label, x + markerW(size, kind), y, size, styleOf(color));
+      x += markerW(size, kind) + measureVectorText(label, size, styleOf(color)) + gap;
       return markup;
     })
     .join("");
@@ -203,7 +210,7 @@ function qualityLegend(cx: number, top: number, h: number, maxW: number, moved: 
  * already spent there, red for the days left. The birth chart itself
  * stays in the form.
  */
-export function buildGocharMarkup(layout: GocharLayout, kundli: KundliData, onDate: string, opts: { roomyAnalysis?: boolean } = {}): string {
+export function buildGocharMarkup(layout: GocharLayout, kundli: KundliData, onDate: string, opts: { zoom?: boolean } = {}): string {
   const { x0, y0, size, caption, facts, strip } = layout;
   const [year, month, day] = onDate.split("-").map(Number);
   const noon = new Date(Date.UTC(year, month - 1, day, 12));
@@ -265,9 +272,9 @@ export function buildGocharMarkup(layout: GocharLayout, kundli: KundliData, onDa
     devanagariMarkup(layout.titleText, textLeft, textTop + textSize - textSize * DEVANAGARI_SCALE * 0.72, textSize * DEVANAGARI_SCALE, "#f7c56a"),
     buildVectorTextMarkup(latin, textLeft + devanagariWidth, textTop, textSize, titleStyle),
     facts ? devanagariMarkup(facts.text, centerX, caption.y + layout.titleHeight + (caption.h - layout.legendHeight - layout.titleHeight - facts.size) / 2 - facts.size * 0.15, facts.size, PANCHANG_FACTS_COLOR, "center") : "",
-    qualityLegend(centerX, caption.y + caption.h - layout.legendHeight, layout.legendHeight, caption.w, moved),
-    kundliChartMarkup(x0, y0, size, today, null, previous, colorFor, houseFill, natalMoonSign, (name) => stays.get(name)),
-    layout.analysis && natalMoonSign !== undefined ? analysisMarkup(layout.analysis, today.planets.map((p) => p.name), allHouses, natalMoonSign, opts.roomyAnalysis) : "",
+    qualityLegend(centerX, caption.y + caption.h - layout.legendHeight, layout.legendHeight, caption.w, moved, opts.zoom),
+    kundliChartMarkup(x0, y0, size, today, null, previous, colorFor, houseFill, natalMoonSign, (name) => stays.get(name), opts.zoom),
+    layout.analysis && natalMoonSign !== undefined ? analysisMarkup(layout.analysis, today.planets.map((p) => p.name), allHouses, natalMoonSign, opts.zoom) : "",
   ];
   if (strip) {
     const { box, lines, size: lineSize, lineHeight, padY } = strip;
@@ -288,5 +295,5 @@ export function buildGocharMarkup(layout: GocharLayout, kundli: KundliData, onDa
  */
 export async function buildLuckChartViewSvg(width: number, height: number, kundli: KundliData, onDate: string, panchang: DailyReading["panchang"]): Promise<string> {
   const layout = await layoutLuckChartView(width, height, panchang);
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="${width}" height="${height}" fill="#05070f" />${buildGocharMarkup(layout, kundli, onDate, { roomyAnalysis: true })}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="${width}" height="${height}" fill="#05070f" />${buildGocharMarkup(layout, kundli, onDate, { zoom: true })}</svg>`;
 }

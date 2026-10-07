@@ -249,8 +249,13 @@ export async function layoutWallpaper(params: {
 /**
  * The full-screen Luck Chart view (opened by clicking the chart on the
  * wallpaper): just the gochar block -- caption, chart and Panchang strip --
- * and its Analysis panel, filling a `width`x`height` canvas. Side by side
- * on a landscape canvas, the Analysis below the chart on a portrait one.
+ * and its Analysis panel, filling a `width`x`height` canvas.
+ *
+ * Landscape: the caption and chart take the full height on the left, as
+ * large as fits; the Analysis and, under it, the Panchang strip share the
+ * column to their right -- so the chart never has to shrink to leave room
+ * for the strip below it. Portrait (or a landscape canvas too narrow for
+ * that column): the block on top, the Analysis panel under it.
  */
 export async function layoutLuckChartView(width: number, height: number, panchang: DailyReading["panchang"]): Promise<GocharLayout> {
   const minDim = Math.min(width, height);
@@ -258,15 +263,22 @@ export async function layoutLuckChartView(width: number, height: number, panchan
   const [facts, titleText] = await Promise.all([shapePanchangFacts(panchang), shapeDevanagariText("भाग्य कुन्डली")]);
 
   if (width >= height * 1.15) {
-    // Chart column on the left, Analysis filling the rest on the right.
-    const analysisW = Math.min(width * 0.4, Math.max(minDim * 0.55, width - gap * 3 - (height - gap * 2)));
-    const colW = width - analysisW - gap * 3;
-    const textScale = Math.min(1.6, Math.max(1, colW / (minDim * KUNDLI_FRACTION * 1.6)));
-    const opts = { cx: gap + colW / 2, maxCaptionWidth: colW, stripWidth: colW, minDim, gap, facts, titleText, panchang, textScale };
-    const { block } = await fitBlock(opts, colW, height - gap * 2);
-    const placed = block.place((height - block.height) / 2);
-    const x = gap * 2 + colW;
-    return { ...placed, analysis: { x, y: gap, w: width - gap - x, h: height - gap * 2 } };
+    // The chart alone fills the height on the left; everything else -- the
+    // caption (title, Panchang facts, colour legend), the Analysis and the
+    // Panchang strip -- stacks in the column to its right, which keeps at
+    // least 60% of the short side.
+    const size = Math.min(height - gap * 2, width - gap * 3 - minDim * 0.6);
+    if (size >= minDim * 0.4) {
+      const column = { x: gap * 2 + size, w: width - gap * 3 - size };
+      const block = await gocharBlock({ cx: gap + size / 2, size, maxCaptionWidth: column.w, stripWidth: column.w, minDim, gap, facts, titleText, panchang, textScale: 1.2 });
+      const captionH = block.place(0).y0;
+      const placed = block.place((height - size) / 2 - captionH);
+      const caption = { x: column.x, y: gap, w: column.w, h: captionH };
+      const strip = placed.strip ? { ...placed.strip, box: { x: column.x, y: height - gap - placed.strip.box.h, w: column.w, h: placed.strip.box.h } } : null;
+      const analysisTop = caption.y + caption.h + gap;
+      const analysisBottom = strip ? strip.box.y - gap : height - gap;
+      return { ...placed, caption, strip, analysis: { x: column.x, y: analysisTop, w: column.w, h: analysisBottom - analysisTop } };
+    }
   }
 
   // Portrait: the block on top, the Analysis panel under it.

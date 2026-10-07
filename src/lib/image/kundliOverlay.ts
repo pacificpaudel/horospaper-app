@@ -103,6 +103,8 @@ const LUCK_LAYOUT: { icon: [number, number]; sign: [number, number]; moon: [numb
 ];
 /** How much larger the Luck Chart draws its three numbers than the birth chart. */
 const LUCK_NUMBER_SCALE = 1.3;
+/** The same in the full-screen view, where the chart itself is large: smaller, to leave the houses room. */
+const ZOOM_NUMBER_SCALE = 0.8;
 
 /** Background of the count-from-Moon circles (Luck Chart only). */
 export const MOON_COUNT_COLOR = "#2fa95a";
@@ -201,24 +203,65 @@ export interface SignStay {
 // how far through this house the graha is, and how soon it moves on.
 const STAY_GOOD = "#3ecf6e";
 const STAY_LEFT = "#ff4d4d";
-const PIE_SCALE = 0.5; // diameter, as a share of the label's font size -- small, but readable
+// Pie diameter as a share of the label's font size: small on the wallpaper
+// (just readable), large enough in the zoomed view to hold its percentages.
+const PIE_SCALE = 0.5;
+const ZOOM_PIE_SCALE = 1.6;
 const PIE_GAP = 0.1;
-const stayWidth = (label: Label, fontSize: number) => (label.stay ? fontSize * (PIE_GAP + PIE_SCALE) : 0);
+// Zoomed, clear of the ring drawn around a just-moved graha's name.
+const ZOOM_PIE_GAP = 0.4;
+const pieGapFor = (zoom: boolean) => (zoom ? ZOOM_PIE_GAP : PIE_GAP);
+const pieScaleFor = (zoom: boolean) => (zoom ? ZOOM_PIE_SCALE : PIE_SCALE);
+const stayWidth = (label: Label, fontSize: number, zoom: boolean) => (label.stay ? fontSize * (pieGapFor(zoom) + pieScaleFor(zoom)) : 0);
 
-/** A pie of radius r at (cx, cy): `share` (0-1) of it green from 12 o'clock clockwise, the rest red. */
-export function stayPieMarkup(cx: number, cy: number, r: number, share: number): string {
+
+
+
+/**
+ * A pie of radius r at (cx, cy): `share` (0-1) of it green from 12 o'clock
+ * clockwise, the rest red. With `withPercents`, each slice also carries
+ * its share as a whole percentage (the full 360° = 100%).
+ */
+export function stayPieMarkup(cx: number, cy: number, r: number, share: number, withPercents = false): string {
   const s = Math.min(1, Math.max(0, share));
-  const outline = `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${r.toFixed(1)}" fill="none" stroke="#080b16" stroke-width="${(r * 0.18).toFixed(2)}" />`;
-  if (s <= 0.001 || s >= 0.999) return `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${r.toFixed(1)}" fill="${s >= 0.999 ? STAY_GOOD : STAY_LEFT}" />${outline}`;
-  const angle = s * 2 * Math.PI;
-  const ex = cx + r * Math.sin(angle);
-  const ey = cy - r * Math.cos(angle);
-  const large = s > 0.5 ? 1 : 0;
-  return [
-    `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${r.toFixed(1)}" fill="${STAY_LEFT}" />`,
-    `<path d="M${cx.toFixed(1)} ${cy.toFixed(1)} L${cx.toFixed(1)} ${(cy - r).toFixed(1)} A${r.toFixed(1)} ${r.toFixed(1)} 0 ${large} 1 ${ex.toFixed(1)} ${ey.toFixed(1)} Z" fill="${STAY_GOOD}" />`,
-    outline,
-  ].join("");
+  const outline = `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${r.toFixed(1)}" fill="none" stroke="#080b16" stroke-width="${(r * 0.12).toFixed(2)}" />`;
+  const parts: string[] = [];
+  if (s <= 0.001 || s >= 0.999) {
+    parts.push(`<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${r.toFixed(1)}" fill="${s >= 0.999 ? STAY_GOOD : STAY_LEFT}" />`);
+  } else {
+    const angle = s * 2 * Math.PI;
+    const ex = cx + r * Math.sin(angle);
+    const ey = cy - r * Math.cos(angle);
+    const large = s > 0.5 ? 1 : 0;
+    parts.push(
+      `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${r.toFixed(1)}" fill="${STAY_LEFT}" />`,
+      `<path d="M${cx.toFixed(1)} ${cy.toFixed(1)} L${cx.toFixed(1)} ${(cy - r).toFixed(1)} A${r.toFixed(1)} ${r.toFixed(1)} 0 ${large} 1 ${ex.toFixed(1)} ${ey.toFixed(1)} Z" fill="${STAY_GOOD}" />`
+    );
+  }
+  parts.push(outline);
+  if (withPercents) {
+    // Each slice's share of the whole circle (360° = 100%), written on it in
+    // white with a dark halo -- readable on green, on red, or straddling the
+    // edge of a thin slice. The two numbers sit half a radius out along
+    // their slices' middles, which keeps them a full radius apart.
+    const passed = Math.round(s * 100);
+    const slices = [
+      { percent: passed, mid: s * Math.PI },
+      { percent: 100 - passed, mid: s * 2 * Math.PI + (1 - s) * Math.PI },
+    ].filter((slice) => slice.percent > 0);
+    const textSize = r * (slices.length === 1 ? 0.62 : 0.5);
+    for (const slice of slices) {
+      const dist = slices.length === 1 ? 0 : r * 0.5;
+      const tx = cx + dist * Math.sin(slice.mid);
+      const top = cy - dist * Math.cos(slice.mid) - textSize / 2;
+      const text = String(slice.percent);
+      parts.push(
+        buildCenteredVectorTextMarkup(text, tx, top, textSize, { face: "clear", color: "#05070f", strokeWidth: 0.42, tracking: 0 }),
+        buildCenteredVectorTextMarkup(text, tx, top, textSize, { face: "clear", color: "#ffffff", strokeWidth: 0.17, tracking: 0 })
+      );
+    }
+  }
+  return parts.join("");
 }
 
 /** One Nepali label (optionally in retrograde parentheses) centered on `cx`, cap-top at `top`. */
@@ -278,21 +321,22 @@ function splitHouse(i: number, blockers: [number, number][] = []): { vertical: b
 }
 
 /** A label's drawn width, including retrograde parentheses -- matches devanagariLabelMarkup. */
-function labelWidth(label: Label, fontSize: number): number {
+function labelWidth(label: Label, fontSize: number, zoom = false): number {
   const glyph = DEVANAGARI_LABELS[label.text];
   if (!glyph) return 0;
   const parenWidth = label.retro ? measureVectorText("(", fontSize * 0.62, { strokeWidth: 0.1, tracking: 0 }) + fontSize * 0.04 : 0;
-  return glyph.width * fontSize + parenWidth * 2 + stayWidth(label, fontSize);
+  return glyph.width * fontSize + parenWidth * 2 + stayWidth(label, fontSize, zoom);
 }
 
-function devanagariLabelMarkup(label: Label, cx: number, top: number, fontSize: number): string {
+function devanagariLabelMarkup(label: Label, cx: number, top: number, fontSize: number, zoom = false): string {
   const glyph = DEVANAGARI_LABELS[label.text];
   if (!glyph) return "";
   const parenSize = fontSize * 0.62;
   const parenStyle: TextStyle = { color: label.color, strokeWidth: 0.1, tracking: 0 };
   const parenWidth = label.retro ? measureVectorText("(", parenSize, parenStyle) + fontSize * 0.04 : 0;
   const textWidth = glyph.width * fontSize;
-  const left = cx - (textWidth + parenWidth * 2 + stayWidth(label, fontSize)) / 2;
+  const pieScale = pieScaleFor(zoom);
+  const left = cx - (textWidth + parenWidth * 2 + stayWidth(label, fontSize, zoom)) / 2;
   // The shirorekha (headline) sits ~0.7 em above the baseline in Noto Sans Devanagari.
   const baseline = top + fontSize * 0.72;
   const parenTop = top - fontSize * 0.02;
@@ -302,10 +346,11 @@ function devanagariLabelMarkup(label: Label, cx: number, top: number, fontSize: 
     label.retro ? buildCenteredVectorTextMarkup(")", left + parenWidth + textWidth + parenWidth / 2, parenTop, parenSize, parenStyle) : "",
     label.stay
       ? stayPieMarkup(
-          left + textWidth + parenWidth * 2 + fontSize * (PIE_GAP + PIE_SCALE / 2),
+          left + textWidth + parenWidth * 2 + fontSize * (pieGapFor(zoom) + pieScale / 2),
           top + fontSize * 0.42,
-          (fontSize * PIE_SCALE) / 2,
-          label.stay.elapsed / label.stay.total
+          (fontSize * pieScale) / 2,
+          label.stay.elapsed / label.stay.total,
+          zoom
         )
       : "",
     label.struck
@@ -339,7 +384,14 @@ export function kundliChartMarkup(
   /** The natal Moon sign: when given, each house also shows its count from it in a green circle. */
   moonSign?: number,
   /** Each graha's stay in its current sign so far, drawn as a small green/red pie after its label. */
-  stayFor?: (planetName: string) => SignStay | undefined
+  stayFor?: (planetName: string) => SignStay | undefined,
+  /**
+   * The full-screen view: labels and number circles set smaller relative
+   * to the houses (the chart itself is much bigger, so they stay large),
+   * leaving each house room to breathe, and pies big enough to show their
+   * percentages.
+   */
+  zoom = false
 ): string {
   const P = (fx: number, fy: number) => `${(x0 + fx * size).toFixed(1)} ${(y0 + fy * size).toFixed(1)}`;
 
@@ -373,11 +425,12 @@ export function kundliChartMarkup(
     })
     .join("");
 
-  const fontSize = size * 0.072;
+  const fontSize = size * (zoom ? 0.04 : 0.072);
   // The Luck Chart (with a natal Moon sign) sets its three numbers larger,
-  // each in its own corner of the house (LUCK_LAYOUT).
+  // each in its own corner of the house (LUCK_LAYOUT) -- except zoomed,
+  // where the whole chart is already large.
   const luck = moonSign !== undefined;
-  const scale = luck ? LUCK_NUMBER_SCALE : 1;
+  const scale = luck ? (zoom ? ZOOM_NUMBER_SCALE : LUCK_NUMBER_SCALE) : 1;
   const iconAt = (i: number) => (luck ? LUCK_LAYOUT[i].icon : HOUSE_ICONS[i]);
   const signAt = (i: number) => (luck ? LUCK_LAYOUT[i].sign : HOUSES[i].num);
   const numberSize = size * 0.03 * scale;
@@ -429,7 +482,8 @@ export function kundliChartMarkup(
    * the others, and each half of a split house, one per line.
    */
   function placeLabels(entries: Label[], i: number, [fx, fy]: [number, number], perRow: number): string {
-      const lineHeight = fontSize * 1.08;
+      // Zoomed pies stand a little taller than the text, so lines get more air.
+      const lineHeight = fontSize * (zoom ? 1.8 : 1.08);
       // Never above the house's own icon when that sits over the labels.
       const iconFy = iconAt(i)[1];
       const belowIcon = iconFy < fy ? y0 + (iconFy + (ICON_H * scale) / 2 + 0.008) * size : -Infinity;
@@ -438,7 +492,7 @@ export function kundliChartMarkup(
       const top = Math.max(y0 + fy * size - (rows.length * lineHeight) / 2 + fontSize * 0.05, belowIcon);
       return rows
         .map((rowEntries, row) => {
-          const widths = rowEntries.map((entry) => labelWidth(entry, fontSize));
+          const widths = rowEntries.map((entry) => labelWidth(entry, fontSize, zoom));
           const gap = fontSize * 0.45;
           let x = x0 + fx * size - (widths.reduce((sum, w) => sum + w, 0) + gap * (widths.length - 1)) / 2;
           return rowEntries
@@ -446,8 +500,10 @@ export function kundliChartMarkup(
               const cx = x + widths[k] / 2;
               x += widths[k] + gap;
               const y = top + row * lineHeight;
-              if (entry.planet) centers.set(`${entry.planet}:${entry.struck ? "was" : "now"}`, [cx, y + fontSize * 0.45]);
-              return devanagariLabelMarkup(entry, cx, y, fontSize);
+              // The name's own center (not its pie's), for the move arrow and ring.
+              const nameCx = cx - stayWidth(entry, fontSize, zoom) / 2;
+              if (entry.planet) centers.set(`${entry.planet}:${entry.struck ? "was" : "now"}`, [nameCx, y + fontSize * 0.45]);
+              return devanagariLabelMarkup(entry, cx, y, fontSize, zoom);
             })
             .join("");
         })
