@@ -1,4 +1,7 @@
 import { AstrologySystem, Language, ImageStyle } from "./enums";
+import type { LuckChartBoxes } from "./models";
+
+export type { LuckChartBox, LuckChartBoxes } from "./models";
 
 export interface BirthProfileDTO {
   id: string;
@@ -79,6 +82,8 @@ export interface HoroscopeDTO {
   imageUrlMobile: string | null;
   imageUrlFrame: string | null;
   imageStyle: ImageStyle;
+  /** Where the Luck Chart sits on each image (absent on older horoscopes). */
+  luckChartBoxes?: LuckChartBoxes | null;
   isPreview: boolean;
   createdAt: string;
 }

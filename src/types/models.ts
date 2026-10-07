@@ -40,6 +40,24 @@ export interface Horoscope {
   wallpaperSource?: WallpaperSource | null;
   /** UTC hour ("2026-10-01T05") of the Schumann data drawn on the images. */
   schumannHour?: string | null;
+  /** Where the Luck Chart (+ Analysis) sits on each image, so the page can make it clickable. */
+  luckChartBoxes?: LuckChartBoxes | null;
   isPreview: boolean;
   createdAt: string;
+}
+
+/** A Luck Chart's bounds on one wallpaper image, in that image's own pixels. */
+export interface LuckChartBox {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  canvasW: number;
+  canvasH: number;
+}
+
+export interface LuckChartBoxes {
+  desktop: LuckChartBox | null;
+  mobile: LuckChartBox | null;
+  frame: LuckChartBox | null;
 }

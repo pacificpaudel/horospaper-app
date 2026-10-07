@@ -1,10 +1,11 @@
 import type { KundliData } from "@/lib/astrologyApi";
-import { gocharKundli, kundliChartMarkup, MOVED_COLOR } from "./kundliOverlay";
+import { gocharKundli, kundliChartMarkup, MOVED_COLOR, SignStay } from "./kundliOverlay";
 import { devanagariMarkup, PANCHANG_FACTS_COLOR, PANCHANG_SUMMARY_COLOR } from "./panchangOverlay";
 import { buildVectorTextMarkup, measureVectorText, TextStyle, wrapVectorText } from "./vectorFont";
 import type { Box } from "./schumannOverlay";
 import { gocharAssessment, gocharQuality, GocharQuality } from "@/lib/astrology/gochar";
-import type { GocharLayout } from "./wallpaperLayout";
+import { layoutLuckChartView, type GocharLayout } from "./wallpaperLayout";
+import type { DailyReading } from "@/lib/dailyReading";
 
 const DEVANAGARI_SCALE = 1.55;
 
@@ -19,31 +20,49 @@ const STAY_LOOKBACK_DAYS = 1100;
 const DAY_MS = 86_400_000;
 
 /**
- * Walks back a day at a time (at noon UTC, like the rest of the chart) to
- * find, for each graha, which day of its stay in today's sign this is
- * (1 = it entered since yesterday noon) and the sign it was in before.
- * `previous` keeps today's sign for grahas that moved more than
- * MOVE_MEMORY_DAYS ago, so they get no "moved" label.
+ * The first whole day (1, 2, ...) from `noon`, stepping `direction` (-1
+ * back, +1 ahead) at noon UTC like the rest of the chart, on which each
+ * graha is in a different sign than today -- with that sign. Grahas still
+ * in today's sign after STAY_LOOKBACK_DAYS are left out.
  */
-function signHistory(kundli: KundliData, today: KundliData, noon: Date): { previous: KundliData; daysInSign: Map<string, number> } {
-  const previousSign = new Map<string, number>();
-  const daysInSign = new Map<string, number>();
-  for (let day = 1; day <= STAY_LOOKBACK_DAYS && daysInSign.size < today.planets.length; day++) {
-    const before = gocharKundli(kundli, new Date(noon.getTime() - day * DAY_MS));
+function signChanges(kundli: KundliData, today: KundliData, noon: Date, direction: -1 | 1): Map<string, { day: number; sign: number }> {
+  const found = new Map<string, { day: number; sign: number }>();
+  for (let day = 1; day <= STAY_LOOKBACK_DAYS && found.size < today.planets.length; day++) {
+    const then = gocharKundli(kundli, new Date(noon.getTime() + direction * day * DAY_MS));
     for (const planet of today.planets) {
-      if (daysInSign.has(planet.name)) continue;
-      const then = before.planets.find((p) => p.name === planet.name);
-      if (!then || then.sign === planet.sign) continue;
-      daysInSign.set(planet.name, day);
-      if (day <= MOVE_MEMORY_DAYS) previousSign.set(planet.name, then.sign);
+      if (found.has(planet.name)) continue;
+      const other = then.planets.find((p) => p.name === planet.name);
+      if (other && other.sign !== planet.sign) found.set(planet.name, { day, sign: other.sign });
     }
+  }
+  return found;
+}
+
+/**
+ * Each graha's stay in today's sign -- days already spent there (today
+ * counts as one) out of the whole stay, since planets' motion is fully
+ * predictable -- and `previous`: the sign each graha last left, for the
+ * grey "last position" label. Grahas that moved more than
+ * MOVE_MEMORY_DAYS ago keep today's sign there, so they get no label.
+ */
+function signHistory(kundli: KundliData, today: KundliData, noon: Date): { previous: KundliData; stays: Map<string, SignStay> } {
+  const before = signChanges(kundli, today, noon, -1);
+  const after = signChanges(kundli, today, noon, 1);
+  const stays = new Map<string, SignStay>();
+  for (const planet of today.planets) {
+    const elapsed = before.get(planet.name)?.day;
+    const ahead = after.get(planet.name)?.day;
+    if (elapsed !== undefined && ahead !== undefined) stays.set(planet.name, { elapsed, total: elapsed + ahead - 1 });
   }
   return {
     previous: {
       ...today,
-      planets: today.planets.map((planet) => ({ ...planet, sign: previousSign.get(planet.name) ?? planet.sign, retro: false })),
+      planets: today.planets.map((planet) => {
+        const last = before.get(planet.name);
+        return { ...planet, sign: last && last.day <= MOVE_MEMORY_DAYS ? last.sign : planet.sign, retro: false };
+      }),
     },
-    daysInSign,
+    stays,
   };
 }
 
@@ -64,7 +83,7 @@ const ordinal = (n: number) => `${n}${n % 10 === 1 && n !== 11 ? "ST" : n % 10 =
  * for that house, or, for a favorable transit cancelled by vedha, which
  * graha blocks it. Text shrinks until it all fits the box.
  */
-function analysisMarkup(box: Box, planets: string[], allHouses: Record<string, number>, natalMoonSign: number): string {
+function analysisMarkup(box: Box, planets: string[], allHouses: Record<string, number>, natalMoonSign: number, roomy = false): string {
   const rows = planets.map((name) => ({ name, house: allHouses[name], ...gocharAssessment(name, allHouses[name], allHouses) }));
   const pad = box.w * 0.06;
   const innerW = box.w - pad * 2;
@@ -74,21 +93,32 @@ function analysisMarkup(box: Box, planets: string[], allHouses: Record<string, n
   const subtitle = `HOUSE FROM MOON: ${SIGN_NAMES[natalMoonSign]}`;
   const footer = "PER PHALADEEPIKA CH. 26";
 
+  // A wide, short box (the portrait full-screen view) sets the grahas in
+  // two columns, so the text can stay large instead of shrinking to fit
+  // one tall column.
+  const columns = roomy && box.w > box.h * 1.4 ? 2 : 1;
+  const colGap = pad;
+  const colW = (innerW - colGap * (columns - 1)) / columns;
+  const perColumn = Math.ceil(rows.length / columns);
+
   // Largest text size at which every line fits the box's width and height.
-  let size = Math.min(box.w * 0.055, box.h * 0.04);
+  // Starts as large as could fit (much larger in the roomy full-screen view)
+  // and shrinks until every line fits.
+  let size = roomy ? Math.min(box.w * 0.045 * columns, box.h * 0.08) : Math.min(box.w * 0.055, box.h * 0.04);
   let layout: { head: string; reason: string[]; color: string }[] = [];
   let height = 0;
+  const rowHeight = (row: { reason: string[] }, s: number) => (1 + row.reason.length) * s * 1.45 + s * 0.45;
   for (let attempt = 0; attempt < 40; attempt++) {
     const s = size;
-    const fit = (text: string, style: TextStyle) => measureVectorText(text, s, style) <= innerW;
+    const fit = (text: string, style: TextStyle, w = colW) => measureVectorText(text, s, style) <= w;
     layout = rows.map((row) => ({
       head: `${row.name.toUpperCase()} · ${ordinal(row.house)} · ${row.quality.toUpperCase()}`,
-      reason: wrapVectorText(row.blockedBy ? `GOOD HOUSE, BLOCKED BY ${row.blockedBy.planet.toUpperCase()} IN ${ordinal(row.blockedBy.house)} (VEDHA)` : row.reason, innerW, s * 0.9, reasonStyle),
+      reason: wrapVectorText(row.blockedBy ? `GOOD HOUSE, BLOCKED BY ${row.blockedBy.planet.toUpperCase()} IN ${ordinal(row.blockedBy.house)} (VEDHA)` : row.reason, colW - s, s * 0.9, reasonStyle),
       color: QUALITY_COLORS[row.quality],
     }));
-    const lines = layout.reduce((sum, row) => sum + 1 + row.reason.length, 0);
-    height = pad * 2 + s * 1.3 * 1.8 + s * 0.85 * 1.7 + lines * s * 1.45 + rows.length * s * 0.45 + s * 0.8 * 1.6;
-    const widthOk = fit("ANALYSIS", titleStyle) && measureVectorText(subtitle, s * 0.85, noteStyle) <= innerW && layout.every((row) => fit(row.head, titleStyle));
+    const tallest = Math.max(...Array.from({ length: columns }, (_, c) => layout.slice(c * perColumn, (c + 1) * perColumn).reduce((sum, row) => sum + rowHeight(row, s), 0)));
+    height = pad * 2 + s * 1.3 * 1.8 + s * 0.85 * 1.7 + tallest + s * 0.8 * 1.6;
+    const widthOk = fit("ANALYSIS", titleStyle, innerW) && measureVectorText(subtitle, s * 0.85, noteStyle) <= innerW && layout.every((row) => fit(row.head, titleStyle, colW - s));
     if (height <= box.h && widthOk) break;
     size *= 0.93;
   }
@@ -101,17 +131,23 @@ function analysisMarkup(box: Box, planets: string[], allHouses: Record<string, n
   y += size * 1.3 * 1.8;
   parts.push(buildVectorTextMarkup(subtitle, box.x + pad, y, size * 0.85, noteStyle));
   y += size * 0.85 * 1.7;
-  for (const row of layout) {
-    parts.push(`<circle cx="${(box.x + pad + size * 0.35).toFixed(1)}" cy="${(y + size / 2).toFixed(1)}" r="${(size * 0.35).toFixed(1)}" fill="${row.color}" />`);
-    parts.push(buildVectorTextMarkup(row.head, box.x + pad + size, y, size, { ...titleStyle, color: row.color, tracking: 0.1 }));
+  const rowsTop = y;
+  let bottom = y;
+  layout.forEach((row, i) => {
+    const column = Math.floor(i / perColumn);
+    if (i % perColumn === 0) y = rowsTop;
+    const x = box.x + pad + column * (colW + colGap);
+    parts.push(`<circle cx="${(x + size * 0.35).toFixed(1)}" cy="${(y + size / 2).toFixed(1)}" r="${(size * 0.35).toFixed(1)}" fill="${row.color}" />`);
+    parts.push(buildVectorTextMarkup(row.head, x + size, y, size, { ...titleStyle, color: row.color, tracking: 0.1 }));
     y += size * 1.45;
     for (const line of row.reason) {
-      parts.push(buildVectorTextMarkup(line, box.x + pad + size, y, size * 0.9, reasonStyle));
+      parts.push(buildVectorTextMarkup(line, x + size, y, size * 0.9, reasonStyle));
       y += size * 1.45;
     }
     y += size * 0.45;
-  }
-  parts.push(buildVectorTextMarkup(footer, box.x + pad, y + size * 0.3, size * 0.8, noteStyle));
+    bottom = Math.max(bottom, y);
+  });
+  parts.push(buildVectorTextMarkup(footer, box.x + pad, bottom + size * 0.3, size * 0.8, noteStyle));
   return `<g>${parts.join("")}</g>`;
 }
 
@@ -163,16 +199,16 @@ function qualityLegend(cx: number, top: number, h: number, maxW: number, moved: 
  * / bad transit from the natal Moon sign, and any graha that changed sign
  * in the last MOVE_MEMORY_DAYS days also keeps a grey, struck-through label
  * (with an arrow) in the house it last left. Each graha's label is
- * followed by a small number: which day of its stay in that sign it is
- * on. The birth chart itself
+ * followed by a small pie of its stay in that sign: green for the days
+ * already spent there, red for the days left. The birth chart itself
  * stays in the form.
  */
-export function buildGocharMarkup(layout: GocharLayout, kundli: KundliData, onDate: string): string {
+export function buildGocharMarkup(layout: GocharLayout, kundli: KundliData, onDate: string, opts: { roomyAnalysis?: boolean } = {}): string {
   const { x0, y0, size, caption, facts, strip } = layout;
   const [year, month, day] = onDate.split("-").map(Number);
   const noon = new Date(Date.UTC(year, month - 1, day, 12));
   const today = gocharKundli(kundli, noon);
-  const { previous, daysInSign } = signHistory(kundli, today, noon);
+  const { previous, stays } = signHistory(kundli, today, noon);
   const moved = today.planets.some((planet) => previous.planets.find((before) => before.name === planet.name)?.sign !== planet.sign);
 
   // Each graha coloured by how its transit sits, counted from the natal
@@ -230,8 +266,8 @@ export function buildGocharMarkup(layout: GocharLayout, kundli: KundliData, onDa
     buildVectorTextMarkup(latin, textLeft + devanagariWidth, textTop, textSize, titleStyle),
     facts ? devanagariMarkup(facts.text, centerX, caption.y + layout.titleHeight + (caption.h - layout.legendHeight - layout.titleHeight - facts.size) / 2 - facts.size * 0.15, facts.size, PANCHANG_FACTS_COLOR, "center") : "",
     qualityLegend(centerX, caption.y + caption.h - layout.legendHeight, layout.legendHeight, caption.w, moved),
-    kundliChartMarkup(x0, y0, size, today, null, previous, colorFor, houseFill, natalMoonSign, (name) => daysInSign.get(name)),
-    layout.analysis && natalMoonSign !== undefined ? analysisMarkup(layout.analysis, today.planets.map((p) => p.name), allHouses, natalMoonSign) : "",
+    kundliChartMarkup(x0, y0, size, today, null, previous, colorFor, houseFill, natalMoonSign, (name) => stays.get(name)),
+    layout.analysis && natalMoonSign !== undefined ? analysisMarkup(layout.analysis, today.planets.map((p) => p.name), allHouses, natalMoonSign, opts.roomyAnalysis) : "",
   ];
   if (strip) {
     const { box, lines, size: lineSize, lineHeight, padY } = strip;
@@ -241,4 +277,16 @@ export function buildGocharMarkup(layout: GocharLayout, kundli: KundliData, onDa
     );
   }
   return `<g>${parts.join("")}</g>`;
+}
+
+/**
+ * The full-screen Luck Chart view as a standalone SVG document: the same
+ * gochar block and Analysis panel the wallpaper draws, laid out to fill a
+ * `width`x`height` screen on a plain dark background (see
+ * layoutLuckChartView). Vector-only, like the wallpaper, so it stays sharp
+ * at any size.
+ */
+export async function buildLuckChartViewSvg(width: number, height: number, kundli: KundliData, onDate: string, panchang: DailyReading["panchang"]): Promise<string> {
+  const layout = await layoutLuckChartView(width, height, panchang);
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="${width}" height="${height}" fill="#05070f" />${buildGocharMarkup(layout, kundli, onDate, { roomyAnalysis: true })}</svg>`;
 }

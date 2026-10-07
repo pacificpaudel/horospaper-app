@@ -127,6 +127,7 @@ export async function generateHoroscopeForUser(params: {
   let imagePrompt: string | undefined;
   let wallpaperSource: WallpaperSource | undefined;
   let schumannHour: string | undefined;
+  let luckChartBoxes: Horoscope["luckChartBoxes"];
   try {
     // The astrology-derived key alone keeps the artwork stable across
     // passive reloads within the same day (e.g. the midnight auto-refresh),
@@ -153,6 +154,7 @@ export async function generateHoroscopeForUser(params: {
     imagePrompt = image.prompt;
     wallpaperSource = image.source;
     schumannHour = image.schumannHour;
+    luckChartBoxes = image.luckChartBoxes;
   } catch (err) {
     logGenerationError(userId, "image", err);
     // Text is still valuable without an image -- don't fail the whole request.
@@ -171,6 +173,7 @@ export async function generateHoroscopeForUser(params: {
     imagePrompt: imagePrompt ?? null,
     wallpaperSource: wallpaperSource ?? null,
     schumannHour: schumannHour ?? null,
+    luckChartBoxes: luckChartBoxes ?? null,
     imageStyle: profile.imageStyle,
     isPreview,
     createdAt: new Date().toISOString(),
@@ -217,6 +220,7 @@ export async function refreshHoroscopeWallpaper(horoscope: Horoscope, timeZone: 
       imageUrlMobile: image.mobileUrl,
       imageUrlFrame: image.frameUrl,
       schumannHour: image.schumannHour,
+      luckChartBoxes: image.luckChartBoxes,
     };
     await redis.set(horoscopeKey(horoscope.userId, horoscope.generationDate, horoscope.isPreview), refreshed, { ex: TTL_SECONDS });
     const superseded = [horoscope.imageUrl, horoscope.imageUrlMobile, horoscope.imageUrlFrame].filter(

@@ -103,23 +103,16 @@ body {
 .frame-mode-fullscreen { position: absolute; top: 1rem; right: 1rem; z-index: 1; background: rgba(11, 18, 32, 0.55); opacity: 0.45; transition: opacity 150ms ease; }
 .frame-mode-fullscreen:hover, .frame-mode-fullscreen:focus-visible { opacity: 1; }
 .output-frame:fullscreen { border-radius: 0; background: #000; }
-/* Same "Version 2.0" tag under the luck meter on both the desktop output
-   and frame mode. */
-.wallpaper-version {
-  position: absolute;
-  /* Just under the luck meter panel, which sits ~6.5% up from the bottom. */
-  bottom: 0.3rem;
-  left: 50%;
-  transform: translateX(-50%);
-  font-style: italic;
-  font-size: 0.8rem;
-  letter-spacing: 0.04em;
-  color: rgba(248, 240, 223, 0.55);
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
-  white-space: nowrap;
-  pointer-events: none;
-}
-.wallpaper-refreshed { font-size: 0.65rem; opacity: 0.8; }
+/* "Last refreshed: … · Version 6.1", small on the footer's second line. */
+.footer-status { font-size: 0.65rem; font-style: italic; letter-spacing: 0.04em; opacity: 0.75; white-space: nowrap; }
+/* The clickable Luck Chart (LuckChartLayer): an invisible button exactly over
+   the chart baked into the wallpaper, and the full-screen view it opens. */
+.luck-chart-layer { position: absolute; inset: 0; pointer-events: none; }
+.luck-chart-hotspot { position: absolute; pointer-events: auto; cursor: zoom-in; border-radius: 0.5rem; background: transparent; outline: 2px solid transparent; transition: outline-color 150ms ease, background 150ms ease; }
+.luck-chart-hotspot:hover, .luck-chart-hotspot:focus-visible { outline-color: rgba(247, 197, 106, 0.6); background: rgba(247, 197, 106, 0.06); }
+.luck-chart-view { position: fixed; inset: 0; z-index: 200; display: flex; align-items: center; justify-content: center; background: #05070f; cursor: zoom-out; pointer-events: auto; }
+.luck-chart-view-image { width: 100%; height: 100%; object-fit: contain; }
+.luck-chart-view-error { color: var(--foreground); font-size: 0.9rem; }
 
 * {
   border-color: var(--border);

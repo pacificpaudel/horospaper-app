@@ -222,13 +222,19 @@ export async function layoutWallpaper(params: {
     const bottomRight = boxes.find((b) => b.spec.corner === "bottom-right")!;
     const stripWidth = bottomRight.x - gap - (bottomLeft.x + bottomLeft.size + gap);
     const blockOpts = { cx: width / 2, maxCaptionWidth: width * 0.9, stripWidth, minDim, gap, facts, titleText, panchang: params.panchang };
-    // As large as fits: never above the image's horizontal center line,
-    // leaving room for the gauge above, and narrow enough to keep the
-    // Analysis panel beside it -- and, since its lower part sits level with
-    // the bottom corner diagrams, no wider than the space between them.
-    const maxHeight = Math.min(regionBottom - startY - (score != null ? minDim * GAUGE_FRACTION + gap * 2 : 0), regionBottom - height / 2);
-    const maxSize = Math.min(minDim * KUNDLI_MAX_FRACTION, width - 2 * (minDim * ANALYSIS_MIN_FRACTION + gap * 2), stripWidth);
-    const { block } = await fitBlock(blockOpts, Math.max(minDim * KUNDLI_FRACTION, maxSize), maxHeight);
+    // Room for the gauge above; on a short canvas the chart gives way.
+    const roomForGauge = regionBottom - startY - (score != null ? minDim * GAUGE_FRACTION + gap * 2 : 0);
+    // Mobile: as large as fits, never above the image's horizontal center
+    // line, narrow enough to keep the Analysis panel beside it -- and, since
+    // its lower part sits level with the bottom corner diagrams, no wider
+    // than the space between them. Frame mode (flush) keeps the reference
+    // size: on a wall-mounted frame the chart shouldn't take over half the
+    // picture (the full-screen Luck Chart view is a click away).
+    const maxHeight = flush ? roomForGauge : Math.min(roomForGauge, regionBottom - height / 2);
+    const maxSize = flush
+      ? minDim * KUNDLI_FRACTION
+      : Math.max(minDim * KUNDLI_FRACTION, Math.min(minDim * KUNDLI_MAX_FRACTION, width - 2 * (minDim * ANALYSIS_MIN_FRACTION + gap * 2), stripWidth));
+    const { block } = await fitBlock(blockOpts, maxSize, maxHeight);
     gocharLayout = withAnalysis(block.place(regionBottom - block.height));
     gaugeBottom = gocharLayout.caption.y - gap * 2;
   }
@@ -238,4 +244,36 @@ export async function layoutWallpaper(params: {
   const cy = Math.min(Math.max(height / 2, startY + d / 2), gaugeBottom - d / 2);
   const gauge = d >= minDim * 0.05 ? { cx: width / 2, cy, d } : null;
   return { gauge, gochar: gocharLayout };
+}
+
+/**
+ * The full-screen Luck Chart view (opened by clicking the chart on the
+ * wallpaper): just the gochar block -- caption, chart and Panchang strip --
+ * and its Analysis panel, filling a `width`x`height` canvas. Side by side
+ * on a landscape canvas, the Analysis below the chart on a portrait one.
+ */
+export async function layoutLuckChartView(width: number, height: number, panchang: DailyReading["panchang"]): Promise<GocharLayout> {
+  const minDim = Math.min(width, height);
+  const gap = Math.round(minDim * 0.03);
+  const [facts, titleText] = await Promise.all([shapePanchangFacts(panchang), shapeDevanagariText("भाग्य कुन्डली")]);
+
+  if (width >= height * 1.15) {
+    // Chart column on the left, Analysis filling the rest on the right.
+    const analysisW = Math.min(width * 0.4, Math.max(minDim * 0.55, width - gap * 3 - (height - gap * 2)));
+    const colW = width - analysisW - gap * 3;
+    const textScale = Math.min(1.6, Math.max(1, colW / (minDim * KUNDLI_FRACTION * 1.6)));
+    const opts = { cx: gap + colW / 2, maxCaptionWidth: colW, stripWidth: colW, minDim, gap, facts, titleText, panchang, textScale };
+    const { block } = await fitBlock(opts, colW, height - gap * 2);
+    const placed = block.place((height - block.height) / 2);
+    const x = gap * 2 + colW;
+    return { ...placed, analysis: { x, y: gap, w: width - gap - x, h: height - gap * 2 } };
+  }
+
+  // Portrait: the block on top, the Analysis panel under it.
+  const textScale = Math.min(1.6, Math.max(1, (width - gap * 2) / (minDim * KUNDLI_FRACTION * 1.6)));
+  const opts = { cx: width / 2, maxCaptionWidth: width - gap * 2, stripWidth: width - gap * 2, minDim, gap, facts, titleText, panchang, textScale };
+  const { block } = await fitBlock(opts, width - gap * 2, height * 0.64);
+  const placed = block.place(gap);
+  const y = gap * 2 + block.height;
+  return { ...placed, analysis: { x: gap, y, w: width - gap * 2, h: height - gap - y } };
 }

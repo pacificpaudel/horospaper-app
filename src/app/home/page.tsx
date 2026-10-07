@@ -11,8 +11,8 @@ import { CrystalBallScene } from "@/components/CrystalBallScene";
 import { ensureGuestId } from "@/lib/client/guest";
 import { apiFetch, ApiError } from "@/lib/client/api";
 import { BirthProfileDTO, HoroscopeDTO } from "@/types/api";
-import { APP_VERSION } from "@/lib/version";
-import { formatRefreshedAt } from "@/lib/client/formatRefreshedAt";
+import { setLastRefreshed } from "@/lib/client/refreshStatus";
+import { LuckChartLayer } from "@/components/LuckChartLayer";
 
 // Header (5rem) + footer (4rem) chrome subtracted from the viewport height,
 // and the output canvas's own max-w-6xl + padding subtracted from the
@@ -72,14 +72,14 @@ function HoroscopeArtwork({
   imageUrl,
   isMobile,
   luckScore,
-  refreshedAt,
   frameRef,
+  children,
 }: {
   imageUrl: string;
   isMobile: boolean;
   luckScore: number;
-  refreshedAt: Date | null;
   frameRef: React.RefObject<HTMLDivElement | null>;
+  children?: React.ReactNode;
 }) {
   return (
     <div ref={frameRef} className="output-frame">
@@ -92,10 +92,7 @@ function HoroscopeArtwork({
         unoptimized
         className="output-image"
       />
-      <span className="wallpaper-version" aria-hidden="true">
-        {refreshedAt && <span className="wallpaper-refreshed">Last refreshed: {formatRefreshedAt(refreshedAt)} · </span>}
-        Version {APP_VERSION}
-      </span>
+      {children}
     </div>
   );
 }
@@ -103,10 +100,10 @@ function HoroscopeArtwork({
 export default function HomePage() {
   const [profile, setProfile] = useState<BirthProfileDTO | null | undefined>(undefined);
   const [horoscope, setHoroscopeState] = useState<HoroscopeDTO | null>(null);
-  const [refreshedAt, setRefreshedAt] = useState<Date | null>(null);
+  // Every new wallpaper also updates the footer's "Last refreshed" time.
   const setHoroscope = useCallback((next: HoroscopeDTO | null) => {
     setHoroscopeState(next);
-    setRefreshedAt(next ? new Date() : null);
+    setLastRefreshed(next ? new Date() : null);
   }, []);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -223,14 +220,23 @@ export default function HomePage() {
       // `imageUrl` above. Falls back for horoscopes generated before this
       // variant existed.
       const frameImageUrl = horoscope.imageUrlFrame ?? horoscope.imageUrlMobile ?? horoscope.imageUrl;
-      return <FrameMode imageUrl={frameImageUrl} luckScore={luckScore} refreshedAt={refreshedAt} onExit={() => setFrameMode(false)} />;
+      const boxes = horoscope.luckChartBoxes;
+      const frameBox = horoscope.imageUrlFrame ? boxes?.frame : horoscope.imageUrlMobile ? boxes?.mobile : boxes?.desktop;
+      return (
+        <FrameMode imageUrl={frameImageUrl} luckScore={luckScore} onExit={() => setFrameMode(false)}>
+          <LuckChartLayer box={frameBox} date={horoscope.generationDate} isPreview={horoscope.isPreview} />
+        </FrameMode>
+      );
     }
 
+    const box = isMobile && horoscope.imageUrlMobile ? horoscope.luckChartBoxes?.mobile : horoscope.luckChartBoxes?.desktop;
     return (
       <div className="output-page flex min-h-0 flex-1 flex-col">
         <NavBar downloadUrl={imageUrl} fullscreenTarget={artworkRef} onLogoClick={() => setHoroscope(null)} />
         <main className="output-canvas mx-auto w-full max-w-6xl px-5 md:px-8">
-          <HoroscopeArtwork key={imageUrl} imageUrl={imageUrl} isMobile={isMobile} luckScore={luckScore} refreshedAt={refreshedAt} frameRef={artworkRef} />
+          <HoroscopeArtwork key={imageUrl} imageUrl={imageUrl} isMobile={isMobile} luckScore={luckScore} frameRef={artworkRef}>
+            <LuckChartLayer box={box} date={horoscope.generationDate} isPreview={horoscope.isPreview} />
+          </HoroscopeArtwork>
         </main>
       </div>
     );

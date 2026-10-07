@@ -2,7 +2,8 @@ import { ImageStyle } from "@/types/enums";
 import { StructuredAstrologyData } from "@/lib/astrology";
 import type { SchumannView } from "./schumannOverlay";
 import { DailyIntent } from "./dailyIntent";
-import { buildOverlayLayers } from "./compositeOverlay";
+import { buildOverlay } from "./compositeOverlay";
+import type { LuckChartBox } from "@/types/models";
 import type { KundliData } from "@/lib/astrologyApi";
 import type { DailyReading } from "@/lib/dailyReading";
 
@@ -63,6 +64,8 @@ export async function generateMockHoroscopeImageSvg(opts: {
   schumann?: SchumannView | null;
   tags?: string[];
   zodiacSign?: string;
+  /** Told where the Luck Chart landed on this canvas (null when there's none). */
+  onLuckChartBox?: (box: LuckChartBox | null) => void;
 }): Promise<string> {
   const rand = mulberry32(hashSeed(opts.seed));
   const [, bg2, accent] = PALETTES[opts.style];
@@ -132,8 +135,8 @@ export async function generateMockHoroscopeImageSvg(opts: {
   const targetWidth = opts.target?.width ?? WIDTH;
   const targetHeight = opts.target?.height ?? HEIGHT;
   // Every overlay, laid out exactly as on a photo wallpaper (see compositeOverlay.ts).
-  const overlays = astrology
-    ? await buildOverlayLayers({
+  const overlay = astrology
+    ? await buildOverlay({
         width: targetWidth,
         height: targetHeight,
         astrology,
@@ -145,7 +148,9 @@ export async function generateMockHoroscopeImageSvg(opts: {
         flush: opts.flushPlanets,
         schumann: opts.schumann,
       })
-    : "";
+    : null;
+  const overlays = overlay?.markup ?? "";
+  opts.onLuckChartBox?.(overlay?.luckChartBox ?? null);
 
   const artwork = `<defs>
     <linearGradient id="paper" x1="0" y1="0" x2="1" y2="1">

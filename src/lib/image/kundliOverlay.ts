@@ -5,7 +5,7 @@ import { tropicalToSidereal, normalizeDegrees } from "@/lib/astrology/zodiac";
 import type { KundliData } from "@/lib/astrologyApi";
 import { getPlanetPosition } from "@/lib/astrology/ephemeris";
 import type { PlanetKey } from "@/lib/astrology/constants";
-import { buildCenteredVectorTextMarkup, buildVectorTextMarkup, measureVectorText, TextStyle } from "./vectorFont";
+import { buildCenteredVectorTextMarkup, measureVectorText, TextStyle } from "./vectorFont";
 import { DEVANAGARI_LABELS } from "./devanagariLabels";
 import { embedChartSvg } from "./chartSvgOutline";
 
@@ -186,17 +186,40 @@ interface Label {
   struck?: boolean;
   /** The graha's English name (absent for the lagna label). */
   planet?: string;
-  /** Luck Chart only: which day of its stay in this sign the graha is on (1 = entered today). */
-  days?: number;
+  /** Luck Chart only: the graha's stay in this sign so far, in days, of its whole stay there. */
+  stay?: SignStay;
 }
 
-// The day count set small after a graha's label, sitting on its baseline.
-const DAYS_SCALE = 0.42;
-const DAYS_GAP = 0.06;
-const daysStyle = (color: string): TextStyle => ({ face: "clear", color, strokeWidth: 0.14, tracking: 0.04 });
-const daysText = (label: Label) => (label.days === undefined ? "" : String(label.days));
-const daysWidth = (label: Label, fontSize: number) =>
-  label.days === undefined ? 0 : fontSize * DAYS_GAP + measureVectorText(daysText(label), fontSize * DAYS_SCALE, daysStyle(label.color));
+/** How long a graha has been in its current sign (`elapsed` days) out of its whole stay (`total` days). */
+export interface SignStay {
+  elapsed: number;
+  total: number;
+}
+
+// The stay pie after a graha's label: green for the days it has already
+// spent in the sign, red for the days it has left there -- so it reads as
+// how far through this house the graha is, and how soon it moves on.
+const STAY_GOOD = "#3ecf6e";
+const STAY_LEFT = "#ff4d4d";
+const PIE_SCALE = 0.5; // diameter, as a share of the label's font size -- small, but readable
+const PIE_GAP = 0.1;
+const stayWidth = (label: Label, fontSize: number) => (label.stay ? fontSize * (PIE_GAP + PIE_SCALE) : 0);
+
+/** A pie of radius r at (cx, cy): `share` (0-1) of it green from 12 o'clock clockwise, the rest red. */
+export function stayPieMarkup(cx: number, cy: number, r: number, share: number): string {
+  const s = Math.min(1, Math.max(0, share));
+  const outline = `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${r.toFixed(1)}" fill="none" stroke="#080b16" stroke-width="${(r * 0.18).toFixed(2)}" />`;
+  if (s <= 0.001 || s >= 0.999) return `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${r.toFixed(1)}" fill="${s >= 0.999 ? STAY_GOOD : STAY_LEFT}" />${outline}`;
+  const angle = s * 2 * Math.PI;
+  const ex = cx + r * Math.sin(angle);
+  const ey = cy - r * Math.cos(angle);
+  const large = s > 0.5 ? 1 : 0;
+  return [
+    `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${r.toFixed(1)}" fill="${STAY_LEFT}" />`,
+    `<path d="M${cx.toFixed(1)} ${cy.toFixed(1)} L${cx.toFixed(1)} ${(cy - r).toFixed(1)} A${r.toFixed(1)} ${r.toFixed(1)} 0 ${large} 1 ${ex.toFixed(1)} ${ey.toFixed(1)} Z" fill="${STAY_GOOD}" />`,
+    outline,
+  ].join("");
+}
 
 /** One Nepali label (optionally in retrograde parentheses) centered on `cx`, cap-top at `top`. */
 /** Houses 2, 6, 8 and 12 (0-based): triangles wide enough to set labels side by side. */
@@ -259,7 +282,7 @@ function labelWidth(label: Label, fontSize: number): number {
   const glyph = DEVANAGARI_LABELS[label.text];
   if (!glyph) return 0;
   const parenWidth = label.retro ? measureVectorText("(", fontSize * 0.62, { strokeWidth: 0.1, tracking: 0 }) + fontSize * 0.04 : 0;
-  return glyph.width * fontSize + parenWidth * 2 + daysWidth(label, fontSize);
+  return glyph.width * fontSize + parenWidth * 2 + stayWidth(label, fontSize);
 }
 
 function devanagariLabelMarkup(label: Label, cx: number, top: number, fontSize: number): string {
@@ -269,7 +292,7 @@ function devanagariLabelMarkup(label: Label, cx: number, top: number, fontSize: 
   const parenStyle: TextStyle = { color: label.color, strokeWidth: 0.1, tracking: 0 };
   const parenWidth = label.retro ? measureVectorText("(", parenSize, parenStyle) + fontSize * 0.04 : 0;
   const textWidth = glyph.width * fontSize;
-  const left = cx - (textWidth + parenWidth * 2 + daysWidth(label, fontSize)) / 2;
+  const left = cx - (textWidth + parenWidth * 2 + stayWidth(label, fontSize)) / 2;
   // The shirorekha (headline) sits ~0.7 em above the baseline in Noto Sans Devanagari.
   const baseline = top + fontSize * 0.72;
   const parenTop = top - fontSize * 0.02;
@@ -277,13 +300,12 @@ function devanagariLabelMarkup(label: Label, cx: number, top: number, fontSize: 
     label.retro ? buildCenteredVectorTextMarkup("(", left + parenWidth / 2, parenTop, parenSize, parenStyle) : "",
     `<path d="${glyph.d}" fill="${label.color}" transform="translate(${(left + parenWidth).toFixed(1)} ${baseline.toFixed(1)}) scale(${fontSize.toFixed(2)})" />`,
     label.retro ? buildCenteredVectorTextMarkup(")", left + parenWidth + textWidth + parenWidth / 2, parenTop, parenSize, parenStyle) : "",
-    label.days !== undefined
-      ? buildVectorTextMarkup(
-          daysText(label),
-          left + textWidth + parenWidth * 2 + fontSize * DAYS_GAP,
-          baseline - fontSize * DAYS_SCALE,
-          fontSize * DAYS_SCALE,
-          daysStyle(label.color)
+    label.stay
+      ? stayPieMarkup(
+          left + textWidth + parenWidth * 2 + fontSize * (PIE_GAP + PIE_SCALE / 2),
+          top + fontSize * 0.42,
+          (fontSize * PIE_SCALE) / 2,
+          label.stay.elapsed / label.stay.total
         )
       : "",
     label.struck
@@ -316,8 +338,8 @@ export function kundliChartMarkup(
   houseFill?: (houseIndex: number) => string | [string, string] | null,
   /** The natal Moon sign: when given, each house also shows its count from it in a green circle. */
   moonSign?: number,
-  /** Which day of its stay in its current sign each graha is on, drawn small after its label. */
-  daysFor?: (planetName: string) => number | undefined
+  /** Each graha's stay in its current sign so far, drawn as a small green/red pie after its label. */
+  stayFor?: (planetName: string) => SignStay | undefined
 ): string {
   const P = (fx: number, fy: number) => `${(x0 + fx * size).toFixed(1)} ${(y0 + fy * size).toFixed(1)}`;
 
@@ -371,7 +393,7 @@ export function kundliChartMarkup(
     // Nodes always move backwards, so like the API's chart only true
     // planets get the (retrograde) parentheses.
     const retro = planet.retro && planet.name !== "Rahu" && planet.name !== "Ketu";
-    byHouse[house].push({ text, retro, color: colorFor?.(planet.name) ?? "#fdf6e6", planet: planet.name, days: daysFor?.(planet.name) });
+    byHouse[house].push({ text, retro, color: colorFor?.(planet.name) ?? "#fdf6e6", planet: planet.name, stay: stayFor?.(planet.name) });
   }
   for (const before of previous?.planets ?? []) {
     const text = NEPALI_LABELS[before.name];

@@ -5,7 +5,8 @@ import { buildDateHeader, shapeNepaliWeekday } from "./dateHeaderOverlay";
 import { Box, buildGaugeMarkup, buildGraphMarkup, graphHeightFor, graphLabelSize, SchumannView } from "./schumannOverlay";
 import { buildGalaxyMarkup } from "./galaxyOverlay";
 import { buildGocharMarkup } from "./gocharOverlay";
-import { layoutWallpaper } from "./wallpaperLayout";
+import { GocharLayout, layoutWallpaper } from "./wallpaperLayout";
+import type { LuckChartBox } from "@/types/models";
 import { isZodiacSign, ZODIAC_BADGE, zodiacIconMarkup, ZodiacSign } from "./zodiacIcons";
 import { buildCenteredVectorTextMarkup, TextStyle } from "./vectorFont";
 import type { KundliData } from "@/lib/astrologyApi";
@@ -30,7 +31,23 @@ export interface TargetCanvas {
  * the photo composite below and the local SVG artwork (mockImage.ts), so
  * the two can never lay things out differently.
  */
-export async function buildOverlayLayers(params: {
+export async function buildOverlayLayers(params: OverlayParams): Promise<string> {
+  return (await buildOverlay(params)).markup;
+}
+
+/** The gochar block's bounds -- caption, chart and Analysis panel -- for a click target. */
+function luckChartBoxOf(gochar: GocharLayout, width: number, height: number): LuckChartBox {
+  const right = Math.max(gochar.x0 + gochar.size, gochar.caption.x + gochar.caption.w, gochar.analysis ? gochar.analysis.x + gochar.analysis.w : 0);
+  const left = Math.min(gochar.x0, gochar.caption.x);
+  const top = Math.min(gochar.caption.y, gochar.analysis?.y ?? Infinity);
+  const bottom = Math.max(gochar.y0 + gochar.size, gochar.analysis ? gochar.analysis.y + gochar.analysis.h : 0);
+  return { x: Math.round(left), y: Math.round(top), w: Math.round(right - left), h: Math.round(bottom - top), canvasW: width, canvasH: height };
+}
+
+type OverlayParams = Parameters<typeof buildOverlay>[0];
+
+/** buildOverlayLayers' markup, plus where the Luck Chart landed (null when there's none). */
+export async function buildOverlay(params: {
   width: number;
   height: number;
   astrology: StructuredAstrologyData;
@@ -43,7 +60,7 @@ export async function buildOverlayLayers(params: {
   panchang: DailyReading["panchang"];
   flush?: boolean;
   schumann?: SchumannView | null;
-}): Promise<string> {
+}): Promise<{ markup: string; luckChartBox: LuckChartBox | null }> {
   const { width, height, astrology, tags, kundli, schumann } = params;
   const flush = Boolean(params.flush);
   const date = astrology.generationDate;
@@ -123,7 +140,7 @@ export async function buildOverlayLayers(params: {
     }),
     buildPlanetNamesMarkup(width, height, flush),
   ]);
-  return [
+  const markup = [
     buildGalaxyMarkup(width, height, date),
     buildPlanetDiagramsMarkup(astrology, width, height, flush),
     planetNames,
@@ -134,6 +151,7 @@ export async function buildOverlayLayers(params: {
     layout.gochar && kundli ? buildGocharMarkup(layout.gochar, kundli, date) : "",
     buildLuckMeterMarkup(width, height, params.luckScore),
   ].join("");
+  return { markup, luckChartBox: layout.gochar && kundli ? luckChartBoxOf(layout.gochar, width, height) : null };
 }
 
 /**
@@ -153,7 +171,7 @@ export async function withWallpaperOverlay(
   target?: TargetCanvas,
   flushPlanets = false,
   schumann?: SchumannView | null
-): Promise<Buffer> {
+): Promise<{ buffer: Buffer; luckChartBox: LuckChartBox | null }> {
   const sharp = (await import("sharp")).default;
   let base = sharp(image);
   let width: number;
@@ -169,7 +187,7 @@ export async function withWallpaperOverlay(
     height = metadata.height ?? 1350;
   }
 
-  const layers = await buildOverlayLayers({
+  const { markup: layers, luckChartBox } = await buildOverlay({
     width,
     height,
     astrology,
@@ -182,5 +200,5 @@ export async function withWallpaperOverlay(
     schumann,
   });
   const overlay = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${layers}</svg>`;
-  return base.composite([{ input: Buffer.from(overlay), top: 0, left: 0 }]).toBuffer();
+  return { buffer: await base.composite([{ input: Buffer.from(overlay), top: 0, left: 0 }]).toBuffer(), luckChartBox };
 }

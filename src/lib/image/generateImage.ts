@@ -9,8 +9,9 @@ import { readingTags, withWallpaperOverlay, TargetCanvas } from "./compositeOver
 import { getSchumannSnapshot } from "@/lib/schumann";
 import type { SchumannView } from "./schumannOverlay";
 import { createHash } from "node:crypto";
+import type { LuckChartBoxes } from "@/types/models";
 
-const IMAGE_GENERATOR_VERSION = "daily-image-v30";
+const IMAGE_GENERATOR_VERSION = "daily-image-v31";
 
 // Source images (a random-aspect-ratio Openverse photo, OpenAI's fixed
 // portrait size, or the mock SVG's native 4:5) rarely match either wallpaper
@@ -56,10 +57,15 @@ export type WallpaperSource =
   | { kind: "raster"; url: string; contentType: string; extension: string }
   | { kind: "mock"; seed: string };
 
-export interface GeneratedImage {
+interface RenderedUrls {
   url: string;
   mobileUrl: string;
   frameUrl: string;
+  /** Where the Luck Chart landed on each of the 3 images. */
+  luckChartBoxes: LuckChartBoxes;
+}
+
+export interface GeneratedImage extends RenderedUrls {
   prompt: string;
   provider: "openai" | "openverse" | "mock";
   source: WallpaperSource;
@@ -83,7 +89,7 @@ interface OverlayContext {
 // immutable, so a refreshed wallpaper needs a new URL to be picked up.
 const fileStem = (ctx: OverlayContext) => `${ctx.assetId}-${IMAGE_GENERATOR_VERSION}-${ctx.schumann.snapshot.hour.replace(/\D/g, "")}`;
 
-async function renderRaster(buffer: Buffer, contentType: string, extension: string, ctx: OverlayContext) {
+async function renderRaster(buffer: Buffer, contentType: string, extension: string, ctx: OverlayContext): Promise<RenderedUrls> {
   const { astrology, reading, schumann } = ctx;
   const [desktop, mobile, frame] = await Promise.all([
     withWallpaperOverlay(buffer, astrology, reading, desktopTargetFor(ctx.desktopRatio), false, schumann),
@@ -92,15 +98,16 @@ async function renderRaster(buffer: Buffer, contentType: string, extension: stri
   ]);
   const stem = fileStem(ctx);
   const [{ url }, { url: mobileUrl }, { url: frameUrl }] = await Promise.all([
-    saveGeneratedFile(`${stem}.${extension}`, desktop, contentType),
-    saveGeneratedFile(`${stem}-mobile.${extension}`, mobile, contentType),
-    saveGeneratedFile(`${stem}-frame.${extension}`, frame, contentType),
+    saveGeneratedFile(`${stem}.${extension}`, desktop.buffer, contentType),
+    saveGeneratedFile(`${stem}-mobile.${extension}`, mobile.buffer, contentType),
+    saveGeneratedFile(`${stem}-frame.${extension}`, frame.buffer, contentType),
   ]);
-  return { url, mobileUrl, frameUrl };
+  return { url, mobileUrl, frameUrl, luckChartBoxes: { desktop: desktop.luckChartBox, mobile: mobile.luckChartBox, frame: frame.luckChartBox } };
 }
 
-async function renderMock(seed: string, ctx: OverlayContext) {
+async function renderMock(seed: string, ctx: OverlayContext): Promise<RenderedUrls> {
   const { astrology, reading } = ctx;
+  const luckChartBoxes: LuckChartBoxes = { desktop: null, mobile: null, frame: null };
   const svgOpts = {
     seed,
     style: ctx.style,
@@ -117,9 +124,9 @@ async function renderMock(seed: string, ctx: OverlayContext) {
     zodiacSign: reading.rashi?.sign,
   };
   const [svg, mobileSvg, frameSvg] = await Promise.all([
-    generateMockHoroscopeImageSvg({ ...svgOpts, target: desktopTargetFor(ctx.desktopRatio) }),
-    generateMockHoroscopeImageSvg({ ...svgOpts, target: MOBILE_TARGET }),
-    generateMockHoroscopeImageSvg({ ...svgOpts, target: FRAME_TARGET, flushPlanets: true }),
+    generateMockHoroscopeImageSvg({ ...svgOpts, target: desktopTargetFor(ctx.desktopRatio), onLuckChartBox: (box) => (luckChartBoxes.desktop = box) }),
+    generateMockHoroscopeImageSvg({ ...svgOpts, target: MOBILE_TARGET, onLuckChartBox: (box) => (luckChartBoxes.mobile = box) }),
+    generateMockHoroscopeImageSvg({ ...svgOpts, target: FRAME_TARGET, flushPlanets: true, onLuckChartBox: (box) => (luckChartBoxes.frame = box) }),
   ]);
   const stem = fileStem(ctx);
   const [{ url }, { url: mobileUrl }, { url: frameUrl }] = await Promise.all([
@@ -127,7 +134,7 @@ async function renderMock(seed: string, ctx: OverlayContext) {
     saveGeneratedFile(`${stem}-mobile.svg`, mobileSvg, "image/svg+xml"),
     saveGeneratedFile(`${stem}-frame.svg`, frameSvg, "image/svg+xml"),
   ]);
-  return { url, mobileUrl, frameUrl };
+  return { url, mobileUrl, frameUrl, luckChartBoxes };
 }
 
 /** Stores the clean, overlay-free photo so later hourly redraws reuse it exactly. */
@@ -201,7 +208,7 @@ export async function rerenderHoroscopeImage(params: {
   emotionalTheme: string;
   desktopRatio?: number;
   timeZone: string;
-}): Promise<{ url: string; mobileUrl: string; frameUrl: string; schumannHour: string }> {
+}): Promise<RenderedUrls & { schumannHour: string }> {
   const { source } = params;
   const assetId = createHash("sha256")
     .update(source.kind === "raster" ? source.url : source.seed)
