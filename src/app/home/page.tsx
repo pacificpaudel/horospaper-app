@@ -12,6 +12,7 @@ import { ensureGuestId } from "@/lib/client/guest";
 import { apiFetch, ApiError } from "@/lib/client/api";
 import { BirthProfileDTO, HoroscopeDTO } from "@/types/api";
 import { APP_VERSION } from "@/lib/version";
+import { formatRefreshedAt } from "@/lib/client/formatRefreshedAt";
 
 // Header (5rem) + footer (4rem) chrome subtracted from the viewport height,
 // and the output canvas's own max-w-6xl + padding subtracted from the
@@ -71,11 +72,13 @@ function HoroscopeArtwork({
   imageUrl,
   isMobile,
   luckScore,
+  refreshedAt,
   frameRef,
 }: {
   imageUrl: string;
   isMobile: boolean;
   luckScore: number;
+  refreshedAt: Date | null;
   frameRef: React.RefObject<HTMLDivElement | null>;
 }) {
   return (
@@ -89,14 +92,22 @@ function HoroscopeArtwork({
         unoptimized
         className="output-image"
       />
-      <span className="wallpaper-version" aria-hidden="true">Version {APP_VERSION}</span>
+      <span className="wallpaper-version" aria-hidden="true">
+        {refreshedAt && <span className="wallpaper-refreshed">Last refreshed: {formatRefreshedAt(refreshedAt)} · </span>}
+        Version {APP_VERSION}
+      </span>
     </div>
   );
 }
 
 export default function HomePage() {
   const [profile, setProfile] = useState<BirthProfileDTO | null | undefined>(undefined);
-  const [horoscope, setHoroscope] = useState<HoroscopeDTO | null>(null);
+  const [horoscope, setHoroscopeState] = useState<HoroscopeDTO | null>(null);
+  const [refreshedAt, setRefreshedAt] = useState<Date | null>(null);
+  const setHoroscope = useCallback((next: HoroscopeDTO | null) => {
+    setHoroscopeState(next);
+    setRefreshedAt(next ? new Date() : null);
+  }, []);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [frameMode, setFrameMode] = useState(false);
@@ -117,27 +128,42 @@ export default function HomePage() {
   // Replaces `horoscope` with the freshly generated one only once the new
   // day's fetch resolves, so the stale wallpaper is what's shown right up
   // until the new one is ready, rather than a jarring blank flash.
-  const refreshHoroscope = useCallback(async () => {
+  const lastSeenDayRef = useRef<string | null>(null);
+  const lastSeenHourRef = useRef<string | null>(null);
+  const refreshInFlightRef = useRef(false);
+
+  // Compulsory day rollover: the day/hour refs only advance once a
+  // wallpaper for the new local date has actually arrived (checked against
+  // its generationDate). A failed fetch -- network blip, device waking from
+  // sleep before Wi-Fi is back -- or a stale answer is simply retried on
+  // the next poll tick until the new day's wallpaper is showing, instead of
+  // leaving yesterday's up until the next hour.
+  const refreshHoroscope = useCallback(async (day: string, hour: string) => {
+    if (refreshInFlightRef.current) return;
+    refreshInFlightRef.current = true;
     try {
       const { horoscope: latest } = await apiFetch<{ horoscope: HoroscopeDTO }>("/api/horoscope/generate", {
         method: "POST",
         body: JSON.stringify({ timezone: currentTimeZone(), desktopRatio: isMobile ? undefined : desktopViewportRatio() }),
       });
       setHoroscope(latest);
+      if (latest.generationDate === day) {
+        lastSeenDayRef.current = day;
+        lastSeenHourRef.current = hour;
+      }
     } catch {
       // Left running unattended, this shouldn't surface an error state.
+    } finally {
+      refreshInFlightRef.current = false;
     }
-  }, [isMobile]);
-
-  const lastSeenDayRef = useRef<string | null>(null);
-  const lastSeenHourRef = useRef<string | null>(null);
+  }, [isMobile, setHoroscope]);
 
   const hasProfile = Boolean(profile);
   useEffect(() => {
     if (!hasProfile) return;
     lastSeenDayRef.current = localDateString(currentTimeZone());
     lastSeenHourRef.current = utcHourString();
-    const intervalId = setInterval(() => {
+    const check = () => {
       // Re-read every tick so a device that travels (or changes its zone
       // setting) follows its new local midnight.
       const today = localDateString(currentTimeZone());
@@ -146,12 +172,25 @@ export default function HomePage() {
       // and artwork otherwise, and free -- see the generate route).
       const hour = utcHourString();
       if (today !== lastSeenDayRef.current || hour !== lastSeenHourRef.current) {
-        lastSeenDayRef.current = today;
-        lastSeenHourRef.current = hour;
-        refreshHoroscope();
+        refreshHoroscope(today, hour);
       }
-    }, DAY_CHANGE_POLL_MS);
-    return () => clearInterval(intervalId);
+    };
+    const intervalId = setInterval(check, DAY_CHANGE_POLL_MS);
+    // Background tabs and sleeping devices throttle or freeze timers, so
+    // also check the moment the page is visible, focused or back online
+    // rather than waiting for the next (possibly much-delayed) tick.
+    const onVisible = () => {
+      if (document.visibilityState === "visible") check();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", check);
+    window.addEventListener("online", check);
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", check);
+      window.removeEventListener("online", check);
+    };
   }, [refreshHoroscope, hasProfile]);
 
   async function handleSaved(savedProfile: BirthProfileDTO) {
@@ -184,14 +223,14 @@ export default function HomePage() {
       // `imageUrl` above. Falls back for horoscopes generated before this
       // variant existed.
       const frameImageUrl = horoscope.imageUrlFrame ?? horoscope.imageUrlMobile ?? horoscope.imageUrl;
-      return <FrameMode imageUrl={frameImageUrl} luckScore={luckScore} onExit={() => setFrameMode(false)} />;
+      return <FrameMode imageUrl={frameImageUrl} luckScore={luckScore} refreshedAt={refreshedAt} onExit={() => setFrameMode(false)} />;
     }
 
     return (
       <div className="output-page flex min-h-0 flex-1 flex-col">
         <NavBar downloadUrl={imageUrl} fullscreenTarget={artworkRef} onLogoClick={() => setHoroscope(null)} />
         <main className="output-canvas mx-auto w-full max-w-6xl px-5 md:px-8">
-          <HoroscopeArtwork key={imageUrl} imageUrl={imageUrl} isMobile={isMobile} luckScore={luckScore} frameRef={artworkRef} />
+          <HoroscopeArtwork key={imageUrl} imageUrl={imageUrl} isMobile={isMobile} luckScore={luckScore} refreshedAt={refreshedAt} frameRef={artworkRef} />
         </main>
       </div>
     );

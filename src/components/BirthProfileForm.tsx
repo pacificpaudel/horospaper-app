@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { fromZonedTime } from "date-fns-tz";
 import { BirthProfileDTO } from "@/types/api";
 import { apiFetch, ApiError } from "@/lib/client/api";
+import { loadFormDraft, saveFormDraft } from "@/lib/client/formDraft";
 import { adToBs, bsToAd } from "@/lib/nepaliDate";
 import { BsDatePicker } from "./BsDatePicker";
 import { CityDropdown, CityOption } from "./CityDropdown";
@@ -122,8 +123,30 @@ export function BirthProfileForm({
   viewMode: ViewMode;
   onViewModeChange: (mode: ViewMode) => void;
 }) {
-  const [values, setValues] = useState<BirthProfileFormValues>(defaultsFrom(initialProfile));
+  // The last values typed into this browser (kept a month, see formDraft)
+  // win over the server profile, which may have expired since -- layered
+  // over the defaults so a draft from an older form version can't leave a
+  // field undefined. Safe during render: the parent only mounts this form
+  // client-side, once it knows whether a profile exists.
+  const [values, setValues] = useState<BirthProfileFormValues>(() => {
+    const draft = loadFormDraft<Partial<BirthProfileFormValues>>();
+    if (!draft) return defaultsFrom(initialProfile);
+    const merged = { ...defaultsFrom(initialProfile), ...draft };
+    delete (merged as { viewMode?: ViewMode }).viewMode;
+    return merged;
+  });
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // "View as" lives in the parent, so restore it from the draft once.
+  useEffect(() => {
+    const savedViewMode = loadFormDraft<{ viewMode?: ViewMode }>()?.viewMode;
+    if (savedViewMode === "DESKTOP" || savedViewMode === "FRAME") onViewModeChange(savedViewMode);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- restore once on mount only
+  }, []);
+
+  useEffect(() => {
+    saveFormDraft({ ...values, viewMode });
+  }, [values, viewMode]);
   const [submitting, setSubmitting] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
 

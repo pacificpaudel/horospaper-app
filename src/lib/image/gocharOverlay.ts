@@ -8,6 +8,45 @@ import type { GocharLayout } from "./wallpaperLayout";
 
 const DEVANAGARI_SCALE = 1.55;
 
+// How far back a graha's last sign change is remembered. The Luck Chart
+// keeps drawing the grey "was here" label and arrow from the sign each
+// graha last left, until it moves again -- not just on the one day after
+// the move -- as long as that move happened within this window.
+const MOVE_MEMORY_DAYS = 30;
+// How far back to look for when each graha entered its sign -- past
+// Saturn's longest stay (~2.5 years, more with retrograde re-entries).
+const STAY_LOOKBACK_DAYS = 1100;
+const DAY_MS = 86_400_000;
+
+/**
+ * Walks back a day at a time (at noon UTC, like the rest of the chart) to
+ * find, for each graha, which day of its stay in today's sign this is
+ * (1 = it entered since yesterday noon) and the sign it was in before.
+ * `previous` keeps today's sign for grahas that moved more than
+ * MOVE_MEMORY_DAYS ago, so they get no "moved" label.
+ */
+function signHistory(kundli: KundliData, today: KundliData, noon: Date): { previous: KundliData; daysInSign: Map<string, number> } {
+  const previousSign = new Map<string, number>();
+  const daysInSign = new Map<string, number>();
+  for (let day = 1; day <= STAY_LOOKBACK_DAYS && daysInSign.size < today.planets.length; day++) {
+    const before = gocharKundli(kundli, new Date(noon.getTime() - day * DAY_MS));
+    for (const planet of today.planets) {
+      if (daysInSign.has(planet.name)) continue;
+      const then = before.planets.find((p) => p.name === planet.name);
+      if (!then || then.sign === planet.sign) continue;
+      daysInSign.set(planet.name, day);
+      if (day <= MOVE_MEMORY_DAYS) previousSign.set(planet.name, then.sign);
+    }
+  }
+  return {
+    previous: {
+      ...today,
+      planets: today.planets.map((planet) => ({ ...planet, sign: previousSign.get(planet.name) ?? planet.sign, retro: false })),
+    },
+    daysInSign,
+  };
+}
+
 /** Good / neutral / bad transit colours (gocharQuality). */
 const QUALITY_COLORS: Record<GocharQuality, string> = {
   good: "#3ecf6e",
@@ -76,18 +115,35 @@ function analysisMarkup(box: Box, planets: string[], allHouses: Record<string, n
   return `<g>${parts.join("")}</g>`;
 }
 
-/** "● GOOD  ● NEUTRAL  ● BAD", centered on `cx` in a row `h` tall from `top`. */
-function qualityLegend(cx: number, top: number, h: number): string {
-  const size = h * 0.42;
+/**
+ * "● GOOD  ● NEUTRAL  ● BAD", plus "- - LAST POSITION" in grey when a
+ * graha's previous sign is drawn, centered on `cx` in a row `h` tall from
+ * `top`; shrinks only if it would overflow `maxW`. (The grey legend used
+ * to share the title line, which shrank the whole "LUCK CHART" title.)
+ */
+function qualityLegend(cx: number, top: number, h: number, maxW: number, moved: boolean): string {
   const style: TextStyle = { face: "clear", color: "#c9cfdc", strokeWidth: 0.12, tracking: 0.14 };
-  const items = (["good", "neutral", "bad"] as const).map((quality) => ({ quality, label: quality.toUpperCase(), width: size * 1.1 + measureVectorText(quality.toUpperCase(), size, style) }));
+  const movedStyle: TextStyle = { ...style, color: MOVED_COLOR };
+  const entries = [
+    ...(["good", "neutral", "bad"] as const).map((quality) => ({ label: quality.toUpperCase(), color: QUALITY_COLORS[quality], dash: false })),
+    ...(moved ? [{ label: "LAST POSITION", color: MOVED_COLOR, dash: true }] : []),
+  ];
+  const markerW = (size: number, dash: boolean) => size * (dash ? 1.6 : 1.1);
+  const rowWidth = (size: number) =>
+    entries.reduce((sum, e) => sum + markerW(size, e.dash) + measureVectorText(e.label, size, e.dash ? movedStyle : style), 0) + size * 1.6 * (entries.length - 1);
+  const ideal = h * 0.42;
+  const size = Math.min(ideal, ideal * ((maxW * 0.96) / rowWidth(ideal)));
   const gap = size * 1.6;
-  let x = cx - (items.reduce((sum, item) => sum + item.width, 0) + gap * (items.length - 1)) / 2;
+  let x = cx - rowWidth(size) / 2;
   const y = top + (h - size) / 2;
-  return items
-    .map(({ quality, label, width }) => {
-      const markup = `<circle cx="${(x + size * 0.38).toFixed(1)}" cy="${(y + size / 2).toFixed(1)}" r="${(size * 0.38).toFixed(1)}" fill="${QUALITY_COLORS[quality]}" />${buildVectorTextMarkup(label, x + size * 1.1, y, size, style)}`;
-      x += width + gap;
+  const midY = (y + size / 2).toFixed(1);
+  return entries
+    .map(({ label, color, dash }) => {
+      const marker = dash
+        ? `<line x1="${x.toFixed(1)}" y1="${midY}" x2="${(x + size * 1.2).toFixed(1)}" y2="${midY}" stroke="${color}" stroke-width="${Math.max(1, size * 0.14).toFixed(1)}" stroke-dasharray="${(size * 0.3).toFixed(1)} ${(size * 0.2).toFixed(1)}" />`
+        : `<circle cx="${(x + size * 0.38).toFixed(1)}" cy="${midY}" r="${(size * 0.38).toFixed(1)}" fill="${color}" />`;
+      const markup = marker + buildVectorTextMarkup(label, x + markerW(size, dash), y, size, dash ? movedStyle : style);
+      x += markerW(size, dash) + measureVectorText(label, size, dash ? movedStyle : style) + gap;
       return markup;
     })
     .join("");
@@ -105,8 +161,10 @@ function qualityLegend(cx: number, top: number, h: number): string {
  * judged at noon UTC of `onDate` ("YYYY-MM-DD") like the day's gochar
  * reading; each graha is coloured green / brown / red for a good / neutral
  * / bad transit from the natal Moon sign, and any graha that changed sign
- * since yesterday also keeps a grey, struck-through label in the house it
- * left. The birth chart itself
+ * in the last MOVE_MEMORY_DAYS days also keeps a grey, struck-through label
+ * (with an arrow) in the house it last left. Each graha's label is
+ * followed by a small number: which day of its stay in that sign it is
+ * on. The birth chart itself
  * stays in the form.
  */
 export function buildGocharMarkup(layout: GocharLayout, kundli: KundliData, onDate: string): string {
@@ -114,8 +172,8 @@ export function buildGocharMarkup(layout: GocharLayout, kundli: KundliData, onDa
   const [year, month, day] = onDate.split("-").map(Number);
   const noon = new Date(Date.UTC(year, month - 1, day, 12));
   const today = gocharKundli(kundli, noon);
-  const yesterday = gocharKundli(kundli, new Date(noon.getTime() - 86_400_000));
-  const moved = today.planets.some((planet) => yesterday.planets.find((before) => before.name === planet.name)?.sign !== planet.sign);
+  const { previous, daysInSign } = signHistory(kundli, today, noon);
+  const moved = today.planets.some((planet) => previous.planets.find((before) => before.name === planet.name)?.sign !== planet.sign);
 
   // Each graha coloured by how its transit sits, counted from the natal
   // Moon sign (the rashi) -- see gocharQuality.
@@ -130,39 +188,38 @@ export function buildGocharMarkup(layout: GocharLayout, kundli: KundliData, onDa
   };
 
   // House backgrounds: green where every graha in the house is good, brown
-  // where every one is neutral, red where every one is bad; a house with
-  // any two different verdicts (or no graha) stays as it is.
+  // where every one is neutral, red where every one is bad. A house with
+  // two different verdicts is split half and half in those two colours
+  // (good/bad, good/neutral or neutral/bad), each graha's label in its own
+  // half; with all three, good and bad take the halves (they outrank
+  // neutral) and neutral labels go wherever there's room. Empty: no tint.
   const qualitiesByHouse: GocharQuality[][] = Array.from({ length: 12 }, () => []);
   if (natalMoonSign !== undefined) {
     for (const planet of today.planets) {
       qualitiesByHouse[(planet.sign - today.ascendantSign + 12) % 12].push(gocharQuality(planet.name, allHouses[planet.name], allHouses));
     }
   }
-  const houseFill = (i: number) => {
-    const qualities = qualitiesByHouse[i];
-    if (!qualities.length) return null;
-    if (qualities.every((q) => q === "good")) return QUALITY_COLORS.good;
-    if (qualities.every((q) => q === "neutral")) return QUALITY_COLORS.neutral;
-    if (qualities.every((q) => q === "bad")) return QUALITY_COLORS.bad;
-    return null;
+  const houseFill = (i: number): string | [string, string] | null => {
+    const present = (["good", "neutral", "bad"] as const).filter((q) => qualitiesByHouse[i].includes(q));
+    if (!present.length) return null;
+    if (present.length === 1) return QUALITY_COLORS[present[0]];
+    const [first, second] = present.length === 3 ? (["good", "bad"] as const) : present;
+    return [QUALITY_COLORS[first], QUALITY_COLORS[second]];
   };
 
   const stroke = Math.max(1.2, size * 0.006);
   const radius = size * 0.02;
   const titleStyle: TextStyle = { face: "clear", color: "#f7c56a", strokeWidth: 0.12, tracking: 0.16 };
-  const legendStyle: TextStyle = { face: "clear", color: MOVED_COLOR, strokeWidth: 0.12, tracking: 0.12 };
   // Title: "भाग्य कुन्डली / LUCK CHART" (Devanagari shaped, Latin in the
-  // vector font), plus the grey "yesterday" legend when something moved. Devanagari is
-  // drawn DEVANAGARI_SCALE larger, on the same baseline as the Latin, so the
-  // two read as one line; everything shrinks together to fit the width.
+  // vector font). Devanagari is drawn DEVANAGARI_SCALE larger, on the same
+  // baseline as the Latin, so the two read as one line; both shrink
+  // together only if needed to fit the width. The grey "last position"
+  // legend lives in the colour legend row (qualityLegend), not here.
   const latin = " / LUCK CHART";
-  const legend = moved ? "  GREY: YESTERDAY" : "";
-  const widthAt = (size: number) =>
-    layout.titleText.width * size * DEVANAGARI_SCALE + measureVectorText(latin, size, titleStyle) + (legend ? measureVectorText(legend, size, legendStyle) : 0);
+  const widthAt = (size: number) => layout.titleText.width * size * DEVANAGARI_SCALE + measureVectorText(latin, size, titleStyle);
   const idealSize = layout.titleHeight * 0.4;
   const textSize = Math.min(idealSize, idealSize * ((caption.w * 0.92) / widthAt(idealSize)));
   const devanagariWidth = layout.titleText.width * textSize * DEVANAGARI_SCALE;
-  const latinWidth = measureVectorText(latin, textSize, titleStyle);
   const centerX = caption.x + caption.w / 2;
   const textLeft = centerX - widthAt(textSize) / 2;
   const textTop = caption.y + (layout.titleHeight - textSize) / 2;
@@ -171,10 +228,9 @@ export function buildGocharMarkup(layout: GocharLayout, kundli: KundliData, onDa
     `<rect x="${caption.x.toFixed(1)}" y="${caption.y.toFixed(1)}" width="${caption.w.toFixed(1)}" height="${(caption.h + stroke).toFixed(1)}" rx="${radius.toFixed(1)}" fill="#080b16" />`,
     devanagariMarkup(layout.titleText, textLeft, textTop + textSize - textSize * DEVANAGARI_SCALE * 0.72, textSize * DEVANAGARI_SCALE, "#f7c56a"),
     buildVectorTextMarkup(latin, textLeft + devanagariWidth, textTop, textSize, titleStyle),
-    legend ? buildVectorTextMarkup(legend, textLeft + devanagariWidth + latinWidth, textTop, textSize, legendStyle) : "",
     facts ? devanagariMarkup(facts.text, centerX, caption.y + layout.titleHeight + (caption.h - layout.legendHeight - layout.titleHeight - facts.size) / 2 - facts.size * 0.15, facts.size, PANCHANG_FACTS_COLOR, "center") : "",
-    qualityLegend(centerX, caption.y + caption.h - layout.legendHeight, layout.legendHeight),
-    kundliChartMarkup(x0, y0, size, today, null, yesterday, colorFor, houseFill, natalMoonSign),
+    qualityLegend(centerX, caption.y + caption.h - layout.legendHeight, layout.legendHeight, caption.w, moved),
+    kundliChartMarkup(x0, y0, size, today, null, previous, colorFor, houseFill, natalMoonSign, (name) => daysInSign.get(name)),
     layout.analysis && natalMoonSign !== undefined ? analysisMarkup(layout.analysis, today.planets.map((p) => p.name), allHouses, natalMoonSign) : "",
   ];
   if (strip) {

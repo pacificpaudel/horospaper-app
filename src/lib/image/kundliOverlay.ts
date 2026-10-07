@@ -5,7 +5,7 @@ import { tropicalToSidereal, normalizeDegrees } from "@/lib/astrology/zodiac";
 import type { KundliData } from "@/lib/astrologyApi";
 import { getPlanetPosition } from "@/lib/astrology/ephemeris";
 import type { PlanetKey } from "@/lib/astrology/constants";
-import { buildCenteredVectorTextMarkup, measureVectorText, TextStyle } from "./vectorFont";
+import { buildCenteredVectorTextMarkup, buildVectorTextMarkup, measureVectorText, TextStyle } from "./vectorFont";
 import { DEVANAGARI_LABELS } from "./devanagariLabels";
 import { embedChartSvg } from "./chartSvgOutline";
 
@@ -132,7 +132,7 @@ export function kundliFromNatal(natal: NatalChart): KundliData | null {
   };
 }
 
-/** Where a graha was yesterday, before it changed sign (see gocharOverlay.ts). */
+/** Where a graha last was, before it changed sign (see gocharOverlay.ts). */
 export const MOVED_COLOR = "#a9b1c4";
 
 const GOCHAR_PLANETS: { name: string; key: PlanetKey }[] = [
@@ -182,22 +182,84 @@ interface Label {
   text: string; // a DEVANAGARI_LABELS key
   retro: boolean;
   color: string;
-  /** Drawn struck through: where a graha was yesterday, before it moved. */
+  /** Drawn struck through: where a graha last was, before it moved. */
   struck?: boolean;
   /** The graha's English name (absent for the lagna label). */
   planet?: string;
+  /** Luck Chart only: which day of its stay in this sign the graha is on (1 = entered today). */
+  days?: number;
 }
+
+// The day count set small after a graha's label, sitting on its baseline.
+const DAYS_SCALE = 0.42;
+const DAYS_GAP = 0.06;
+const daysStyle = (color: string): TextStyle => ({ face: "clear", color, strokeWidth: 0.14, tracking: 0.04 });
+const daysText = (label: Label) => (label.days === undefined ? "" : String(label.days));
+const daysWidth = (label: Label, fontSize: number) =>
+  label.days === undefined ? 0 : fontSize * DAYS_GAP + measureVectorText(daysText(label), fontSize * DAYS_SCALE, daysStyle(label.color));
 
 /** One Nepali label (optionally in retrograde parentheses) centered on `cx`, cap-top at `top`. */
 /** Houses 2, 6, 8 and 12 (0-based): triangles wide enough to set labels side by side. */
 const WIDE_HOUSES = new Set([1, 5, 7, 11]);
+/** Houses 3, 5, 9 and 11 (0-based): the tall, narrow side triangles, split top/bottom rather than left/right. */
+const SIDE_HOUSES = new Set([2, 4, 8, 10]);
+
+/** Where `polygon` spans along the other axis, on the line where coordinate `axis` equals `v`. */
+function spanAt(polygon: [number, number][], axis: 0 | 1, v: number): [number, number] {
+  const hits: number[] = [];
+  polygon.forEach((a, k) => {
+    const b = polygon[(k + 1) % polygon.length];
+    if (a[axis] === b[axis] || (a[axis] - v) * (b[axis] - v) > 0) return;
+    const t = (v - a[axis]) / (b[axis] - a[axis]);
+    hits.push(a[1 - axis] + t * (b[1 - axis] - a[1 - axis]));
+  });
+  return [Math.min(...hits), Math.max(...hits)];
+}
+
+/** Half-size (fraction of the side) kept clear around a house's icon / number circles. */
+const BLOCKER_R = 0.05;
+
+/**
+ * How house i splits into two halves: `vertical` (a left/right split) or
+ * not (top/bottom), the split line's position (fraction of the side), and
+ * each half's label anchor on the line through the usual label point: the
+ * middle of the widest stretch of its half not covered by one of
+ * `blockers` (the house's icon and number circles) sitting on that line.
+ */
+function splitHouse(i: number, blockers: [number, number][] = []): { vertical: boolean; at: number; anchors: [[number, number], [number, number]] } {
+  const [fx, fy] = HOUSES[i].label;
+  const vertical = !SIDE_HOUSES.has(i);
+  const along = vertical ? 0 : 1; // the axis the halves run along
+  const line = vertical ? fy : fx;
+  const [lo, hi] = spanAt(HOUSE_POLYGONS[i], vertical ? 1 : 0, line);
+  const at = (lo + hi) / 2;
+  const onLine = blockers.filter((b) => Math.abs(b[1 - along] - line) < BLOCKER_R * 0.9).map((b) => b[along]);
+  const anchorIn = (from: number, to: number) => {
+    // Free stretches of [from, to] between blockers; take the widest.
+    let best: [number, number] = [from, to];
+    let bestWidth = -1;
+    let start = from;
+    for (const c of [...onLine.filter((c) => c + BLOCKER_R > from && c - BLOCKER_R < to).sort((p, q) => p - q), Infinity]) {
+      const end = Math.min(to, c - BLOCKER_R);
+      if (end - start > bestWidth) {
+        best = [start, end];
+        bestWidth = end - start;
+      }
+      start = Math.max(start, c + BLOCKER_R);
+    }
+    return (best[0] + best[1]) / 2;
+  };
+  const a = anchorIn(lo, at);
+  const b = anchorIn(at, hi);
+  return { vertical, at, anchors: vertical ? [[a, fy], [b, fy]] : [[fx, a], [fx, b]] };
+}
 
 /** A label's drawn width, including retrograde parentheses -- matches devanagariLabelMarkup. */
 function labelWidth(label: Label, fontSize: number): number {
   const glyph = DEVANAGARI_LABELS[label.text];
   if (!glyph) return 0;
   const parenWidth = label.retro ? measureVectorText("(", fontSize * 0.62, { strokeWidth: 0.1, tracking: 0 }) + fontSize * 0.04 : 0;
-  return glyph.width * fontSize + parenWidth * 2;
+  return glyph.width * fontSize + parenWidth * 2 + daysWidth(label, fontSize);
 }
 
 function devanagariLabelMarkup(label: Label, cx: number, top: number, fontSize: number): string {
@@ -207,7 +269,7 @@ function devanagariLabelMarkup(label: Label, cx: number, top: number, fontSize: 
   const parenStyle: TextStyle = { color: label.color, strokeWidth: 0.1, tracking: 0 };
   const parenWidth = label.retro ? measureVectorText("(", parenSize, parenStyle) + fontSize * 0.04 : 0;
   const textWidth = glyph.width * fontSize;
-  const left = cx - (textWidth + parenWidth * 2) / 2;
+  const left = cx - (textWidth + parenWidth * 2 + daysWidth(label, fontSize)) / 2;
   // The shirorekha (headline) sits ~0.7 em above the baseline in Noto Sans Devanagari.
   const baseline = top + fontSize * 0.72;
   const parenTop = top - fontSize * 0.02;
@@ -215,6 +277,15 @@ function devanagariLabelMarkup(label: Label, cx: number, top: number, fontSize: 
     label.retro ? buildCenteredVectorTextMarkup("(", left + parenWidth / 2, parenTop, parenSize, parenStyle) : "",
     `<path d="${glyph.d}" fill="${label.color}" transform="translate(${(left + parenWidth).toFixed(1)} ${baseline.toFixed(1)}) scale(${fontSize.toFixed(2)})" />`,
     label.retro ? buildCenteredVectorTextMarkup(")", left + parenWidth + textWidth + parenWidth / 2, parenTop, parenSize, parenStyle) : "",
+    label.days !== undefined
+      ? buildVectorTextMarkup(
+          daysText(label),
+          left + textWidth + parenWidth * 2 + fontSize * DAYS_GAP,
+          baseline - fontSize * DAYS_SCALE,
+          fontSize * DAYS_SCALE,
+          daysStyle(label.color)
+        )
+      : "",
     label.struck
       ? `<line x1="${(left - fontSize * 0.12).toFixed(1)}" y1="${(top + fontSize * 0.45).toFixed(1)}" x2="${(left + textWidth + parenWidth * 2 + fontSize * 0.12).toFixed(1)}" y2="${(top + fontSize * 0.45).toFixed(1)}" stroke="${label.color}" stroke-width="${(fontSize * 0.1).toFixed(1)}" stroke-linecap="round" />`
       : "",
@@ -236,10 +307,17 @@ export function kundliChartMarkup(
   previous?: KundliData,
   /** Each graha label's colour (by English name); white when not given. */
   colorFor?: (planetName: string) => string,
-  /** A background tint for house i (0-based, house 1 = 0), or null for none. */
-  houseFill?: (houseIndex: number) => string | null,
+  /**
+   * A background tint for house i (0-based, house 1 = 0), or null for none.
+   * A pair splits the house in two halves (left/right, or top/bottom for
+   * the narrow side triangles), each label going into the half whose
+   * colour matches its own (see splitHouse).
+   */
+  houseFill?: (houseIndex: number) => string | [string, string] | null,
   /** The natal Moon sign: when given, each house also shows its count from it in a green circle. */
-  moonSign?: number
+  moonSign?: number,
+  /** Which day of its stay in its current sign each graha is on, drawn small after its label. */
+  daysFor?: (planetName: string) => number | undefined
 ): string {
   const P = (fx: number, fy: number) => `${(x0 + fx * size).toFixed(1)} ${(y0 + fy * size).toFixed(1)}`;
 
@@ -250,12 +328,28 @@ export function kundliChartMarkup(
     `M${P(0.5, 0)} L${P(1, 0.5)} L${P(0.5, 1)} L${P(0, 0.5)} Z`,
   ];
 
-  const houseTints = houseFill
-    ? HOUSE_POLYGONS.map((corners, i) => {
-        const fill = houseFill(i);
-        return fill ? `<path d="M${corners.map(([fx, fy]) => P(fx, fy)).join(" L")} Z" fill="${fill}" fill-opacity="0.3" />` : "";
-      }).join("")
-    : "";
+  const fills = HOUSE_POLYGONS.map((_, i) => houseFill?.(i) ?? null);
+  const houseTints = fills
+    .map((fill, i) => {
+      if (!fill) return "";
+      const corners = HOUSE_POLYGONS[i];
+      const d = `M${corners.map(([fx, fy]) => P(fx, fy)).join(" L")} Z`;
+      if (typeof fill === "string") return `<path d="${d}" fill="${fill}" fill-opacity="0.3" />`;
+      // Two halves: each a rectangle over its side of the split line,
+      // clipped to the house's outline.
+      const { vertical, at } = splitHouse(i);
+      const xs = corners.map(([fx]) => fx);
+      const ys = corners.map(([, fy]) => fy);
+      const [minX, maxX, minY, maxY] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+      const halves: [number, number, number, number][] = vertical
+        ? [[minX, minY, at - minX, maxY - minY], [at, minY, maxX - at, maxY - minY]]
+        : [[minX, minY, maxX - minX, at - minY], [minX, at, maxX - minX, maxY - at]];
+      const clipId = `house-split-${i}-${Math.round(x0)}-${Math.round(y0)}`;
+      return `<clipPath id="${clipId}"><path d="${d}" /></clipPath><g clip-path="url(#${clipId})">${halves
+        .map(([hx, hy, hw, hh], k) => `<rect x="${(x0 + hx * size).toFixed(1)}" y="${(y0 + hy * size).toFixed(1)}" width="${(hw * size).toFixed(1)}" height="${(hh * size).toFixed(1)}" fill="${fill[k]}" fill-opacity="0.3" />`)
+        .join("")}</g>`;
+    })
+    .join("");
 
   const fontSize = size * 0.072;
   // The Luck Chart (with a natal Moon sign) sets its three numbers larger,
@@ -277,7 +371,7 @@ export function kundliChartMarkup(
     // Nodes always move backwards, so like the API's chart only true
     // planets get the (retrograde) parentheses.
     const retro = planet.retro && planet.name !== "Rahu" && planet.name !== "Ketu";
-    byHouse[house].push({ text, retro, color: colorFor?.(planet.name) ?? "#fdf6e6", planet: planet.name });
+    byHouse[house].push({ text, retro, color: colorFor?.(planet.name) ?? "#fdf6e6", planet: planet.name, days: daysFor?.(planet.name) });
   }
   for (const before of previous?.planets ?? []) {
     const text = NEPALI_LABELS[before.name];
@@ -290,14 +384,33 @@ export function kundliChartMarkup(
   const centers = new Map<string, [number, number]>();
   const labels = byHouse
     .map((entries, i) => {
-      const [fx, fy] = HOUSES[i].label;
+      const fill = fills[i];
+      if (!Array.isArray(fill)) return placeLabels(entries, i, HOUSES[i].label, WIDE_HOUSES.has(i) ? 2 : 1);
+      // A split house: labels in the colour of a half go there; anything
+      // else (lagna, neutral, grey "was here") evens out the two sides.
+      const groups: Label[][] = [[], []];
+      const rest: Label[] = [];
+      for (const entry of entries) {
+        const k = fill.indexOf(entry.color);
+        if (k === 0 || k === 1) groups[k].push(entry);
+        else rest.push(entry);
+      }
+      for (const entry of rest) groups[groups[0].length <= groups[1].length ? 0 : 1].push(entry);
+      const { anchors } = splitHouse(i, luck ? [LUCK_LAYOUT[i].icon, LUCK_LAYOUT[i].sign, LUCK_LAYOUT[i].moon] : [HOUSE_ICONS[i], HOUSES[i].num]);
+      return groups.map((group, k) => placeLabels(group, i, anchors[k], 1)).join("");
+    })
+    .join("");
+
+  /**
+   * Stacks `entries` centered on (fx, fy) in house i, `perRow` to a row --
+   * the wide, shallow triangles (houses 2, 6, 8, 12) set two side by side;
+   * the others, and each half of a split house, one per line.
+   */
+  function placeLabels(entries: Label[], i: number, [fx, fy]: [number, number], perRow: number): string {
       const lineHeight = fontSize * 1.08;
       // Never above the house's own icon when that sits over the labels.
       const iconFy = iconAt(i)[1];
       const belowIcon = iconFy < fy ? y0 + (iconFy + (ICON_H * scale) / 2 + 0.008) * size : -Infinity;
-      // The wide, shallow triangles (houses 2, 6, 8, 12) put labels side by
-      // side, two to a row; the others stack them one per line.
-      const perRow = WIDE_HOUSES.has(i) ? 2 : 1;
       const rows: Label[][] = [];
       for (let k = 0; k < entries.length; k += perRow) rows.push(entries.slice(k, k + perRow));
       const top = Math.max(y0 + fy * size - (rows.length * lineHeight) / 2 + fontSize * 0.05, belowIcon);
@@ -317,10 +430,9 @@ export function kundliChartMarkup(
             .join("");
         })
         .join("");
-    })
-    .join("");
+  }
 
-  // A red dashed line from where each moved graha was yesterday to where it
+  // A dashed line from where each moved graha last was to where it
   // is now, ending in an arrowhead and a red ring around its new label.
   const moves = [...centers.entries()]
     .filter(([key]) => key.endsWith(":was"))

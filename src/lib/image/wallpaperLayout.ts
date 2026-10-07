@@ -14,13 +14,37 @@ import type { Box } from "./schumannOverlay";
 // diagrams.
 //
 // Portrait (mobile/frame): the gauge centered under the header, the
-// gochar block on the luck meter. Landscape (desktop): the gauge at the
-// center of the image and the gochar block in a column to its right. A
+// gochar block on the luck meter, as large as fits without rising past the
+// image's horizontal center. Landscape (desktop): the gauge at the center
+// of the image and the gochar block in a column to its right, never left
+// of the center line. Either way the chart grows past its reference size
+// (KUNDLI_FRACTION) when there's room, up to KUNDLI_MAX_FRACTION. A
 // landscape canvas too narrow for that column falls back to the portrait
 // arrangement.
 
-/** The kundli: 20% larger than its original 26% of the short side, then 10% more. */
+/** The kundli's reference size (text scales against it): 26% of the short side, +20%, then +10%. */
 const KUNDLI_FRACTION = 0.343;
+/**
+ * The largest the kundli may grow to when there's room -- bigger houses keep
+ * split halves, day counts and "last position" labels from crowding. The
+ * block still never crosses the image's center line (see layoutWallpaper).
+ */
+const KUNDLI_MAX_FRACTION = 0.6;
+/** Width kept for the Analysis panel beside a portrait chart (share of the short side). */
+const ANALYSIS_MIN_FRACTION = 0.2;
+
+/** Builds the block at up to `maxSize`, shrinking the chart until the whole block fits `maxHeight`. */
+async function fitBlock(opts: Omit<Parameters<typeof gocharBlock>[0], "size">, maxSize: number, maxHeight: number): Promise<{ block: Block; size: number }> {
+  let size = Math.round(maxSize);
+  let block = await gocharBlock({ ...opts, size });
+  // The chart (and its title row, 10% of it) is what gives way; the caption
+  // and strip text don't shrink with it, so a couple of passes converge.
+  for (let pass = 0; pass < 4 && block.height > maxHeight && size > opts.minDim * 0.15; pass++) {
+    size = Math.max(opts.minDim * 0.15, size - (block.height - maxHeight) / 1.1);
+    block = await gocharBlock({ ...opts, size });
+  }
+  return { block, size };
+}
 /** The calmness gauge's diameter, as a share of the canvas's short side. */
 const GAUGE_FRACTION = 0.11;
 
@@ -153,27 +177,35 @@ export async function layoutWallpaper(params: {
     const d = score != null ? Math.min(minDim * GAUGE_FRACTION, regionBottom - startY) : 0;
     const cx = width / 2;
     const cy = Math.min(Math.max(height / 2, startY + d / 2), regionBottom - d / 2);
-    const colTop = topZoneBottom + gap;
-    const colX0 = Math.max(d ? cx + d / 2 + gap * 2 : cx, params.headerRight + gap * 2);
-    const colW = width - (boxes[0].size + gap * 2) - colX0;
-    const colH = regionBottom - colTop;
+    const rightEdge = width - (boxes[0].size + gap * 2);
+    const gaugeRight = d ? cx + d / 2 + gap * 2 : cx + gap;
+    // Two candidate columns for the gochar block, both right of the image's
+    // center line: beside the header, from just below the top corner
+    // diagrams; or (usually far roomier) from the center line itself, below
+    // the header -- the chart then sits centered between the center line
+    // and the right-hand diagrams. Whichever fits the larger chart wins.
+    const columns = [
+      { x0: Math.max(gaugeRight, params.headerRight + gap * 2), top: topZoneBottom + gap },
+      { x0: gaugeRight, top: Math.max(topZoneBottom, params.headerBottom) + gap },
+    ]
+      .map((col) => ({ ...col, w: rightEdge - col.x0, h: regionBottom - col.top }))
+      .filter((col) => col.w >= minDim * 0.15 && col.h > 0);
 
     // On a narrower desktop the column is narrower than the chart's ideal
     // size: rather than switching to the portrait stack, the whole block --
     // chart, caption text and prediction text -- shrinks in proportion.
-    if (!params.hasKundli || colW >= minDim * 0.15) {
+    if (!params.hasKundli || columns.length) {
       let gocharLayout: GocharLayout | null = null;
       if (params.hasKundli) {
-        const textScale = Math.max(0.6, Math.min(1, colW / (minDim * KUNDLI_FRACTION)));
-        const blockOpts = { cx: colX0 + colW / 2, maxCaptionWidth: colW, stripWidth: colW, minDim, gap, facts, titleText, panchang: params.panchang, textScale };
-        let size = Math.min(Math.round(minDim * KUNDLI_FRACTION), colW);
-        let block = await gocharBlock({ ...blockOpts, size });
-        if (block.height > colH) {
-          // The chart (and its title row, 10% of it) is what gives way.
-          size = Math.max(minDim * 0.15, size - (block.height - colH) / 1.1);
-          block = await gocharBlock({ ...blockOpts, size });
+        let best: { block: Block; size: number; top: number } | null = null;
+        for (const col of columns) {
+          const textScale = Math.max(0.6, Math.min(1, col.w / (minDim * KUNDLI_FRACTION)));
+          const blockOpts = { cx: col.x0 + col.w / 2, maxCaptionWidth: col.w, stripWidth: col.w, minDim, gap, facts, titleText, panchang: params.panchang, textScale };
+          const fitted = await fitBlock(blockOpts, Math.min(minDim * KUNDLI_MAX_FRACTION, col.w), col.h);
+          if (!best || fitted.size > best.size) best = { ...fitted, top: col.top };
         }
-        gocharLayout = withAnalysis(block.place(Math.min(Math.max(cy - block.height / 2, colTop), regionBottom - block.height)));
+        const { block, top } = best!;
+        gocharLayout = withAnalysis(block.place(Math.min(Math.max(cy - block.height / 2, top), regionBottom - block.height)));
       }
       return { gauge: d >= minDim * 0.05 ? { cx, cy, d } : null, gochar: gocharLayout };
     }
@@ -190,14 +222,13 @@ export async function layoutWallpaper(params: {
     const bottomRight = boxes.find((b) => b.spec.corner === "bottom-right")!;
     const stripWidth = bottomRight.x - gap - (bottomLeft.x + bottomLeft.size + gap);
     const blockOpts = { cx: width / 2, maxCaptionWidth: width * 0.9, stripWidth, minDim, gap, facts, titleText, panchang: params.panchang };
-    let size = Math.round(minDim * KUNDLI_FRACTION);
-    let block = await gocharBlock({ ...blockOpts, size });
-    // Keep room for the gauge above; on a short canvas the chart gives way.
-    const maxHeight = regionBottom - startY - (score != null ? minDim * GAUGE_FRACTION + gap * 2 : 0);
-    if (block.height > maxHeight) {
-      size = Math.max(minDim * 0.15, size - (block.height - maxHeight) / 1.1);
-      block = await gocharBlock({ ...blockOpts, size });
-    }
+    // As large as fits: never above the image's horizontal center line,
+    // leaving room for the gauge above, and narrow enough to keep the
+    // Analysis panel beside it -- and, since its lower part sits level with
+    // the bottom corner diagrams, no wider than the space between them.
+    const maxHeight = Math.min(regionBottom - startY - (score != null ? minDim * GAUGE_FRACTION + gap * 2 : 0), regionBottom - height / 2);
+    const maxSize = Math.min(minDim * KUNDLI_MAX_FRACTION, width - 2 * (minDim * ANALYSIS_MIN_FRACTION + gap * 2), stripWidth);
+    const { block } = await fitBlock(blockOpts, Math.max(minDim * KUNDLI_FRACTION, maxSize), maxHeight);
     gocharLayout = withAnalysis(block.place(regionBottom - block.height));
     gaugeBottom = gocharLayout.caption.y - gap * 2;
   }
