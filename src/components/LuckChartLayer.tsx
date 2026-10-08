@@ -10,11 +10,25 @@ import { KeepAwake } from "./KeepAwake";
  * button laid exactly over it (the image is shown with object-fit: contain
  * inside the same box as this layer), which opens LuckChartView -- just the
  * Luck Chart and its Analysis, drawn fresh to fill the whole screen.
+ * Whether it's open is owned by the page, so the zoomed view survives the
+ * wallpaper being swapped (and this layer remounted) at a new day and just
+ * redraws for the new date.
  */
-export function LuckChartLayer({ box, date, isPreview }: { box: LuckChartBox | null | undefined; date: string; isPreview: boolean }) {
+export function LuckChartLayer({
+  box,
+  date,
+  isPreview,
+  open,
+  onOpenChange,
+}: {
+  box: LuckChartBox | null | undefined;
+  date: string;
+  isPreview: boolean;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
   const layerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
-  const [open, setOpen] = useState(false);
 
   useEffect(() => {
     const el = layerRef.current;
@@ -47,11 +61,11 @@ export function LuckChartLayer({ box, date, isPreview }: { box: LuckChartBox | n
           onClick={(e) => {
             // Frame mode exits on any click that reaches its own container.
             e.stopPropagation();
-            setOpen(true);
+            onOpenChange(true);
           }}
         />
       )}
-      {open && <LuckChartView date={date} isPreview={isPreview} onClose={() => setOpen(false)} />}
+      {open && <LuckChartView date={date} isPreview={isPreview} onClose={() => onOpenChange(false)} />}
     </div>
   );
 }
@@ -59,9 +73,20 @@ export function LuckChartLayer({ box, date, isPreview }: { box: LuckChartBox | n
 function LuckChartView({ date, isPreview, onClose }: { date: string; isPreview: boolean; onClose: () => void }) {
   const [src, setSrc] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
+  const objectUrlRef = useRef<string | null>(null);
 
+  // Revoked only when the view closes -- a new day's chart replaces it below.
+  useEffect(
+    () => () => {
+      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+      objectUrlRef.current = null;
+    },
+    [],
+  );
+
+  // Redrawn whenever `date` changes (the page swapped in a new day's
+  // horoscope), keeping the previous chart on screen until the new one is in.
   useEffect(() => {
-    let objectUrl: string | null = null;
     let cancelled = false;
     const query = new URLSearchParams({
       date,
@@ -75,15 +100,18 @@ function LuckChartView({ date, isPreview, onClose }: { date: string; isPreview: 
       .then((blob) => {
         if (cancelled) return;
         // Shown through <img>, never inlined, so the SVG can't run script.
-        objectUrl = URL.createObjectURL(blob);
-        setSrc(objectUrl);
+        const previous = objectUrlRef.current;
+        objectUrlRef.current = URL.createObjectURL(blob);
+        setSrc(objectUrlRef.current);
+        setFailed(false);
+        if (previous) URL.revokeObjectURL(previous);
       })
       .catch(() => {
-        if (!cancelled) setFailed(true);
+        // A failed redraw keeps the previous day's chart up rather than an error.
+        if (!cancelled && !objectUrlRef.current) setFailed(true);
       });
     return () => {
       cancelled = true;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [date, isPreview]);
 

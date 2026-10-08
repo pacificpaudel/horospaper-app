@@ -108,6 +108,9 @@ export default function HomePage() {
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [frameMode, setFrameMode] = useState(false);
+  // Owned here, not by LuckChartLayer, so the zoomed Luck Chart stays open
+  // (and just redraws) when a new day's wallpaper replaces the old one.
+  const [luckChartOpen, setLuckChartOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("DESKTOP");
   const isMobile = useIsMobileViewport();
   const artworkRef = useRef<HTMLDivElement>(null);
@@ -224,7 +227,7 @@ export default function HomePage() {
       const frameBox = horoscope.imageUrlFrame ? boxes?.frame : horoscope.imageUrlMobile ? boxes?.mobile : boxes?.desktop;
       return (
         <FrameMode imageUrl={frameImageUrl} luckScore={luckScore} onExit={() => setFrameMode(false)}>
-          <LuckChartLayer box={frameBox} date={horoscope.generationDate} isPreview={horoscope.isPreview} />
+          <LuckChartLayer box={frameBox} date={horoscope.generationDate} isPreview={horoscope.isPreview} open={luckChartOpen} onOpenChange={setLuckChartOpen} />
         </FrameMode>
       );
     }
@@ -235,7 +238,7 @@ export default function HomePage() {
         <NavBar downloadUrl={imageUrl} fullscreenTarget={artworkRef} onLogoClick={() => setHoroscope(null)} />
         <main className="output-canvas mx-auto w-full max-w-6xl px-5 md:px-8">
           <HoroscopeArtwork key={imageUrl} imageUrl={imageUrl} isMobile={isMobile} luckScore={luckScore} frameRef={artworkRef}>
-            <LuckChartLayer box={box} date={horoscope.generationDate} isPreview={horoscope.isPreview} />
+            <LuckChartLayer box={box} date={horoscope.generationDate} isPreview={horoscope.isPreview} open={luckChartOpen} onOpenChange={setLuckChartOpen} />
           </HoroscopeArtwork>
         </main>
       </div>

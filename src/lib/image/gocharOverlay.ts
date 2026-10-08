@@ -68,9 +68,9 @@ function signHistory(kundli: KundliData, today: KundliData, noon: Date): { previ
 
 /** Good / neutral / bad transit colours (gocharQuality). */
 const QUALITY_COLORS: Record<GocharQuality, string> = {
-  good: "#3ecf6e",
-  neutral: "#c08a50",
-  bad: "#ff4d4d",
+  good: "#1aff5c",
+  neutral: "#e8862a",
+  bad: "#ff2020",
 };
 
 const SIGN_NAMES = ["", "ARIES", "TAURUS", "GEMINI", "CANCER", "LEO", "VIRGO", "LIBRA", "SCORPIO", "SAGITTARIUS", "CAPRICORN", "AQUARIUS", "PISCES"];

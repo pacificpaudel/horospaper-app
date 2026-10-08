@@ -201,8 +201,8 @@ export interface SignStay {
 // The stay pie after a graha's label: green for the days it has already
 // spent in the sign, red for the days it has left there -- so it reads as
 // how far through this house the graha is, and how soon it moves on.
-const STAY_GOOD = "#3ecf6e";
-const STAY_LEFT = "#ff4d4d";
+const STAY_GOOD = "#1aff5c";
+const STAY_LEFT = "#ff2020";
 // Pie diameter as a share of the label's font size: small on the wallpaper
 // (just readable), large enough in the zoomed view to hold its percentages.
 const PIE_SCALE = 0.5;
