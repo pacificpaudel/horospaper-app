@@ -11,7 +11,7 @@ import type { SchumannView } from "./schumannOverlay";
 import { createHash } from "node:crypto";
 import type { LuckChartBoxes } from "@/types/models";
 
-const IMAGE_GENERATOR_VERSION = "daily-image-v31";
+const IMAGE_GENERATOR_VERSION = "daily-image-v32";
 
 // Source images (a random-aspect-ratio Openverse photo, OpenAI's fixed
 // portrait size, or the mock SVG's native 4:5) rarely match either wallpaper

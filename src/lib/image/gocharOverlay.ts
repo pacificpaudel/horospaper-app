@@ -210,6 +210,10 @@ function qualityLegend(cx: number, top: number, h: number, maxW: number, moved: 
  * already spent there, red for the days left. The birth chart itself
  * stays in the form.
  */
+const MONTH_ABBREVIATIONS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+/** The title's date, as a share of the title's cap height. */
+const DATE_SCALE = 0.5;
+
 export function buildGocharMarkup(layout: GocharLayout, kundli: KundliData, onDate: string, opts: { zoom?: boolean } = {}): string {
   const { x0, y0, size, caption, facts, strip } = layout;
   const [year, month, day] = onDate.split("-").map(Number);
@@ -258,8 +262,13 @@ export function buildGocharMarkup(layout: GocharLayout, kundli: KundliData, onDa
   // baseline as the Latin, so the two read as one line; both shrink
   // together only if needed to fit the width. The grey "last position"
   // legend lives in the colour legend row (qualityLegend), not here.
+  // A small date ("8.OCT.2026") follows the name, on the same baseline.
   const latin = " / LUCK CHART";
-  const widthAt = (size: number) => layout.titleText.width * size * DEVANAGARI_SCALE + measureVectorText(latin, size, titleStyle);
+  const dateText = `${day}.${MONTH_ABBREVIATIONS[month - 1]}.${year}`;
+  const dateStyle: TextStyle = { face: "clear", color: "#c9cfdc", strokeWidth: 0.12, tracking: 0.12 };
+  const dateGap = (size: number) => size * 0.6;
+  const dateWidth = (size: number) => dateGap(size) + measureVectorText(dateText, size * DATE_SCALE, dateStyle);
+  const widthAt = (size: number) => layout.titleText.width * size * DEVANAGARI_SCALE + measureVectorText(latin, size, titleStyle) + dateWidth(size);
   const idealSize = layout.titleHeight * 0.4;
   const textSize = Math.min(idealSize, idealSize * ((caption.w * 0.92) / widthAt(idealSize)));
   const devanagariWidth = layout.titleText.width * textSize * DEVANAGARI_SCALE;
@@ -271,6 +280,13 @@ export function buildGocharMarkup(layout: GocharLayout, kundli: KundliData, onDa
     `<rect x="${caption.x.toFixed(1)}" y="${caption.y.toFixed(1)}" width="${caption.w.toFixed(1)}" height="${(caption.h + stroke).toFixed(1)}" rx="${radius.toFixed(1)}" fill="#080b16" />`,
     devanagariMarkup(layout.titleText, textLeft, textTop + textSize - textSize * DEVANAGARI_SCALE * 0.72, textSize * DEVANAGARI_SCALE, "#f7c56a"),
     buildVectorTextMarkup(latin, textLeft + devanagariWidth, textTop, textSize, titleStyle),
+    buildVectorTextMarkup(
+      dateText,
+      textLeft + devanagariWidth + measureVectorText(latin, textSize, titleStyle) + dateGap(textSize),
+      textTop + textSize * (1 - DATE_SCALE),
+      textSize * DATE_SCALE,
+      dateStyle
+    ),
     facts ? devanagariMarkup(facts.text, centerX, caption.y + layout.titleHeight + (caption.h - layout.legendHeight - layout.titleHeight - facts.size) / 2 - facts.size * 0.15, facts.size, PANCHANG_FACTS_COLOR, "center") : "",
     qualityLegend(centerX, caption.y + caption.h - layout.legendHeight, layout.legendHeight, caption.w, moved, opts.zoom),
     kundliChartMarkup(x0, y0, size, today, null, previous, colorFor, houseFill, natalMoonSign, (name) => stays.get(name), opts.zoom),

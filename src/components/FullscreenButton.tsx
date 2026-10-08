@@ -1,6 +1,7 @@
 "use client";
 
 import { RefObject, useEffect, useState } from "react";
+import { KeepAwake } from "./KeepAwake";
 
 /**
  * Puts `target` (the wallpaper's own container, not the whole page) into
@@ -18,7 +19,8 @@ export function FullscreenButton({ target, className = "download-button" }: { ta
     return () => document.removeEventListener("fullscreenchange", sync);
   }, [target]);
 
-  if (isFullscreen) return null;
+  // While fullscreen, keep the screen from timing out to the screensaver.
+  if (isFullscreen) return <KeepAwake />;
 
   return (
     <button

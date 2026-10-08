@@ -3,17 +3,7 @@
 import { useEffect, useRef } from "react";
 import Image from "next/image";
 import { FullscreenButton } from "./FullscreenButton";
-
-const WAKE_LOCK_RETRY_MS = 20 * 1000;
-
-// A 1-second, 2x2, silent black clip. Some browsers (older Safari, Firefox,
-// many smart-TV/embedded browsers) don't implement the Screen Wake Lock API
-// at all, or silently refuse it -- looping a muted, playsInline video is the
-// long-standing fallback ("NoSleep.js" trick) that keeps the screen/OS from
-// treating the page as idle even there. Kept as an inline data URI so frame
-// mode doesn't depend on fetching an extra asset.
-const KEEP_AWAKE_VIDEO_SRC =
-  "data:video/mp4;base64,AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAMjbW9vdgAAAGxtdmhkAAAAAAAAAAAAAAAAAAAD6AAAA+gAAQAAAQAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAk50cmFrAAAAXHRraGQAAAADAAAAAAAAAAAAAAABAAAAAAAAA+gAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAAIAAAACAAAAAAAkZWR0cwAAABxlbHN0AAAAAAAAAAEAAAPoAAAAAAABAAAAAAHGbWRpYQAAACBtZGhkAAAAAAAAAAAAAAAAAAAoAAAAKABVxAAAAAAALWhkbHIAAAAAAAAAAHZpZGUAAAAAAAAAAAAAAABWaWRlb0hhbmRsZXIAAAABcW1pbmYAAAAUdm1oZAAAAAEAAAAAAAAAAAAAACRkaW5mAAAAHGRyZWYAAAAAAAAAAQAAAAx1cmwgAAAAAQAAATFzdGJsAAAAuXN0c2QAAAAAAAAAAQAAAKlhdmMxAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAIAAgBIAAAASAAAAAAAAAABFExhdmM2My4xLjEwMSBsaWJ4MjY0AAAAAAAAAAAAAAAAGP//AAAAL2F2Y0MBQsAK/+EAF2dCwArd+IiMBEAAAAMAQAAAAwKDxIngAQAFaM4PLIAAAAAQcGFzcAAAAAEAAAABAAAAFGJ0cnQAAAAAAAAVyAAAAAAAAAAYc3R0cwAAAAAAAAABAAAABQAACAAAAAAcc3RzYwAAAAAAAAABAAAAAQAAAAUAAAABAAAAKHN0c3oAAAAAAAAAAAAAAAUAAAJxAAAAEgAAABIAAAASAAAAEgAAABRzdGNvAAAAAAAAAAEAAANTAAAAYXVkdGEAAABZbWV0YQAAAAAAAAAhaGRscgAAAAAAAAAAbWRpcmFwcGwAAAAAAAAAAAAAAAAsaWxzdAAAACSpdG9vAAAAHGRhdGEAAAABAAAAAExhdmY2My4xLjEwMQAAAAhmcmVlAAACwW1kYXQAAAJeBgX//1rcRem95tlIt5Ys2CDZI+7veDI2NCAtIGNvcmUgMTY1IHIzMjIzIDA0ODBjYjAgLSBILjI2NC9NUEVHLTQgQVZDIGNvZGVjIC0gQ29weWxlZnQgMjAwMy0yMDI1IC0gaHR0cDovL3d3dy52aWRlb2xhbi5vcmcveDI2NC5odG1sIC0gb3B0aW9uczogY2FiYWM9MCByZWY9MSBkZWJsb2NrPTE6MDowIGFuYWx5c2U9MHgxOjB4MTExIG1lPWhleCBzdWJtZT03IHBzeT0xIHBzeV9yZD0xLjAwOjAuMDAgbWl4ZWRfcmVmPTAgbWVfcmFuZ2U9MTYgY2hyb21hX21lPTEgdHJlbGxpcz0xIDh4OGRjdD0wIGNxbT0wIGRlYWR6b25lPTIxLDExIGZhc3RfcHNraXA9MSBjaHJvbWFfcXBfb2Zmc2V0PS0yIHRocmVhZHM9MSBsb29rYWhlYWRfdGhyZWFkcz0xIHNsaWNlZF90aHJlYWRzPTAgbnI9MCBkZWNpbWF0ZT0xIGludGVybGFjZWQ9MCBibHVyYXlfY29tcGF0PTAgY29uc3RyYWluZWRfaW50cmE9MCBiZnJhbWVzPTAgd2VpZ2h0cD0wIGtleWludD0xIGtleWludF9taW49MSBzY2VuZWN1dD00MCBpbnRyYV9yZWZyZXNoPTAgcmM9Y3JmIG1idHJlZT0wIGNyZj0yMy4wIHFjb21wPTAuNjAgcXBtaW49MCBxcG1heD02OSBxcHN0ZXA9NCBpcF9yYXRpbz0xLjQwIGFxPTE6MS4wMACAAAAAC2WIhAS8mKAAOKOAAAAADmWIggFv///D0UAAU9/gAAAADmWIhAW///8PRQABT3+AAAAADmWIggFv///D0UAAU9/gAAAADmWIhAW///8PRQABT3+A";
+import { KeepAwake } from "./KeepAwake";
 
 /**
  * Fullscreen kiosk view for leaving the wallpaper running on a spare
@@ -21,14 +11,13 @@ const KEEP_AWAKE_VIDEO_SRC =
  * fullscreen (silently re-requesting it whenever the browser force-exits it
  * on its own -- an OS screen lock, a permission prompt, background-tab
  * power saving, waking from sleep -- rather than treating that as the user
- * wanting out), a screen wake lock (re-acquired periodically and on
- * visibility regain), and loops a muted keep-awake video as a fallback for
- * browsers without Wake Lock support -- together these keep the display
- * from timing out or a screensaver from taking over. Clicking anywhere on
- * the frame is the only way this view actually exits. The parent page (not
- * this component) is what checks in at the next day boundary so a new
- * day's image picks up on its own, since that scheduler needs to keep
- * running whether or not frame mode happens to be open at the time.
+ * wanting out), and KeepAwake holds the screen on (wake lock plus a
+ * keep-awake video) so the display doesn't time out or a screensaver take
+ * over. Clicking anywhere on the frame is the only way this view actually
+ * exits. The parent page (not this component) is what checks in at the
+ * next day boundary so a new day's image picks up on its own, since that
+ * scheduler needs to keep running whether or not frame mode happens to be
+ * open at the time.
  */
 export function FrameMode({
   imageUrl,
@@ -43,7 +32,6 @@ export function FrameMode({
   children?: React.ReactNode;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     containerRef.current?.requestFullscreen?.().catch(() => {});
@@ -71,55 +59,9 @@ export function FrameMode({
     };
   }, []);
 
-  useEffect(() => {
-    let wakeLock: WakeLockSentinel | null = null;
-    let cancelled = false;
-    const acquire = async () => {
-      try {
-        const lock = await navigator.wakeLock?.request("screen");
-        if (cancelled) {
-          lock?.release().catch(() => {});
-          return;
-        }
-        wakeLock = lock ?? null;
-      } catch {
-        // Not supported, or refused (e.g. low battery) -- the keep-awake
-        // video below still covers most of these cases.
-      }
-    };
-    acquire();
-    // A wake lock can be silently dropped by the OS/browser outside of the
-    // visibilitychange cases (e.g. some Android/Chrome builds after a
-    // while); re-requesting periodically is cheap and self-healing.
-    const retryId = setInterval(() => {
-      if (!wakeLock) acquire();
-    }, WAKE_LOCK_RETRY_MS);
-    const onVisibilityChange = () => {
-      if (document.visibilityState === "visible") acquire();
-    };
-    document.addEventListener("visibilitychange", onVisibilityChange);
-    return () => {
-      cancelled = true;
-      clearInterval(retryId);
-      document.removeEventListener("visibilitychange", onVisibilityChange);
-      wakeLock?.release().catch(() => {});
-    };
-  }, []);
-
-  useEffect(() => {
-    videoRef.current?.play().catch(() => {});
-    // Browsers commonly pause a background tab's video -- resume it
-    // whenever the tab becomes visible again, so the keep-awake trick
-    // doesn't quietly stop working after the device wakes from sleep.
-    const onVisibilityChange = () => {
-      if (document.visibilityState === "visible") videoRef.current?.play().catch(() => {});
-    };
-    document.addEventListener("visibilitychange", onVisibilityChange);
-    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
-  }, []);
-
   return (
     <div ref={containerRef} className="frame-mode" onClick={onExit} role="button" tabIndex={-1} aria-label="Exit frame view">
+      <KeepAwake />
       <Image
         src={imageUrl}
         alt={`Today's horoscope wallpaper. Your luck today: ${luckScore}%.`}
@@ -128,7 +70,6 @@ export function FrameMode({
         priority
         className="frame-mode-image"
       />
-      <video ref={videoRef} src={KEEP_AWAKE_VIDEO_SRC} muted loop autoPlay playsInline aria-hidden="true" className="frame-mode-keepawake" />
       {children}
       {/* The browser refuses to re-enter fullscreen without a user gesture
           after it force-exits it (see above) -- this is that gesture. */}

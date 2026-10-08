@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { getStoredGuestId } from "@/lib/client/guest";
 import type { LuckChartBox } from "@/types/api";
+import { KeepAwake } from "./KeepAwake";
 
 /**
  * Makes the Luck Chart baked into a wallpaper image clickable: an invisible
@@ -105,6 +106,8 @@ function LuckChartView({ date, isPreview, onClose }: { date: string; isPreview: 
         onClose();
       }}
     >
+      {/* Left open on a frame, this view would otherwise time out to the screensaver. */}
+      <KeepAwake />
       {src ? (
         // eslint-disable-next-line @next/next/no-img-element -- a local blob: URL, nothing for next/image to optimize
         <img src={src} alt="Today's Luck Chart and its analysis" className="luck-chart-view-image" />
