@@ -46,7 +46,7 @@ async function fitBlock(opts: Omit<Parameters<typeof gocharBlock>[0], "size">, m
   return { block, size };
 }
 /** The calmness gauge's diameter, as a share of the canvas's short side. */
-const GAUGE_FRACTION = 0.11;
+const GAUGE_FRACTION = 0.085;
 
 export interface GocharLayout {
   /** The chart's square. */

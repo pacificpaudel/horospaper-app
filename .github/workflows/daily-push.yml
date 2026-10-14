@@ -1,0 +1,27 @@
+# The Android app's morning push: every hour, ask the site to send today's
+# Luck Chart and wallpaper to each phone whose local morning has arrived
+# (see src/app/api/cron/daily-push). Runs on GitHub's free schedule, so it
+# works on any Vercel plan. Needs two repository secrets (Settings >
+# Secrets and variables > Actions): HOROSPAPER_URL (the live site, e.g.
+# https://horospaper-app.vercel.app) and CRON_SECRET (the same value as
+# the site's CRON_SECRET environment variable).
+name: Daily push
+
+on:
+  schedule:
+    - cron: "5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Send this hour's morning notifications
+        env:
+          HOROSPAPER_URL: ${{ secrets.HOROSPAPER_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          curl --fail-with-body --silent --show-error --max-time 320 \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$HOROSPAPER_URL/api/cron/daily-push"

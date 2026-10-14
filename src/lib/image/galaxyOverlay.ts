@@ -17,7 +17,14 @@ import { buildCenteredVectorTextMarkup } from "./vectorFont";
 // trail, winding counter-clockwise as they move outward. The Sun's
 // ~230-million-year orbit means its place here doesn't visibly change
 // within a human lifetime -- so the galaxy is fixed; only the miniature
-// Solar System's planets (real heliocentric longitudes) move day to day.
+// Solar System's planets move day to day.
+//
+// The map is a top view (from the North Galactic Pole), turned so that up
+// is North: the direction of the celestial north pole (Polaris) projected
+// onto the galactic disc -- galactic longitude ~122.9°, computed below --
+// with East right, South down and West left, as on a map. A compass at the
+// Galactic Center shows it. The Solar System inset uses the same top view:
+// each planet sits in the direction it truly lies from the Sun on the day.
 //
 // The disc is split into 4 quadrants on the bar's axes (the Galaxy's own
 // fixed frame), numbered I-IV from the bar's near end in the direction of
@@ -29,11 +36,17 @@ const BAR_HALF_KPC = 4.5;
 const BAR_ANGLE_DEG = 27;
 const PITCH_DEG = 12.5;
 const NORMA_AT_SUN_KPC = 3.58;
-// SVG angles: 0° = right, 90° = down (y grows downward). A top-down map's
-// rotation is arbitrary; the Sun is placed level with the Center, on its
-// left, so on the full-width wallpaper it lands mid-height -- clear of the
-// date header at the top and the luck meter at the bottom.
-const SUN_ANGLE_DEG = 180;
+// SVG angles: 0° = right, 90° = down (y grows downward). Galactic
+// longitude grows counter-clockwise seen from the North Galactic Pole, so a
+// direction at longitude l is drawn at screenAngle(l), with North straight up.
+const GALACTIC = Astronomy.Rotation_EQJ_GAL();
+const toGalactic = (vector: Astronomy.Vector) => Astronomy.RotateVector(GALACTIC, vector);
+const longitudeOf = (vector: Astronomy.Vector) => (Math.atan2(vector.y, vector.x) * 180) / Math.PI;
+/** Celestial north (the J2000 pole) projected onto the galactic disc: its galactic longitude. */
+const NORTH_L = longitudeOf(toGalactic(new Astronomy.Vector(0, 0, 1, Astronomy.MakeTime(new Date(Date.UTC(2000, 0, 1, 12))))));
+const screenAngle = (longitudeDeg: number) => -90 - (longitudeDeg - NORTH_L);
+// The Sun sits opposite the Galactic Center's direction (longitude 0) from it.
+const SUN_ANGLE_DEG = screenAngle(0) + 180;
 const BAR_NEAR_END_DEG = SUN_ANGLE_DEG + BAR_ANGLE_DEG;
 const QUADRANT_LABELS = ["I", "II", "III", "IV"];
 
@@ -89,29 +102,79 @@ function spiralArmMarkup(cx: number, cy: number, scale: number, armIndex: number
   return glow + stars;
 }
 
-/** Tiny Sun + inner planets at their real heliocentric longitudes (not to scale). */
-function miniSolarSystemMarkup(x: number, y: number, size: number, date: Date): string {
-  const planets: { body: Astronomy.Body; ring: number; color: string }[] = [
-    { body: Astronomy.Body.Mercury, ring: 0.03, color: "#c9c3b8" },
-    { body: Astronomy.Body.Venus, ring: 0.043, color: "#f0cc85" },
-    { body: Astronomy.Body.Earth, ring: 0.057, color: "#5fb0ff" },
-    { body: Astronomy.Body.Mars, ring: 0.072, color: "#e0714a" },
-  ];
-  const strokeW = Math.max(0.5, size * 0.0025);
-  const markup = planets.map(({ body, ring, color }) => {
-    const r = ring * size;
-    // Heliocentric ecliptic longitude, counter-clockwise from above like
-    // the Galaxy's own frame. (The ecliptic is tilted ~60° to the galactic
-    // plane; at this scale it's drawn face-on.)
-    const longitude = Astronomy.EclipticLongitude(body, date);
-    const [px, py] = polar(x, y, r, -longitude);
-    return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r.toFixed(1)}" fill="none" stroke="#ffffff" stroke-opacity="0.35" stroke-width="${strokeW.toFixed(2)}" />
-      <circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${Math.max(1.2, size * 0.0075).toFixed(1)}" fill="${color}" />`;
+// The 8 planets, Sun outward, on evenly spaced rings (not to scale, so the
+// outer ones stay visible), each with its own colour and a little size.
+const PLANETS: { body: Astronomy.Body; color: string; size: number; ring?: boolean }[] = [
+  { body: Astronomy.Body.Mercury, color: "#c9c3b8", size: 0.8 },
+  { body: Astronomy.Body.Venus, color: "#f0cc85", size: 1 },
+  { body: Astronomy.Body.Earth, color: "#5fb0ff", size: 1.05 },
+  { body: Astronomy.Body.Mars, color: "#e0714a", size: 0.9 },
+  { body: Astronomy.Body.Jupiter, color: "#e3b98a", size: 1.6 },
+  { body: Astronomy.Body.Saturn, color: "#e9d39a", size: 1.35, ring: true },
+  { body: Astronomy.Body.Uranus, color: "#9be3ea", size: 1.15 },
+  { body: Astronomy.Body.Neptune, color: "#5b7cf0", size: 1.15 },
+];
+
+/**
+ * The Solar System seen from above, like the galaxy around it (radius
+ * `r`, centered on (x, y)): the Sun and all 8 planets, each in the
+ * direction it truly lies from the Sun at `date` -- its heliocentric
+ * position turned into galactic coordinates and viewed from the North
+ * Galactic Pole, North up (see screenAngle).
+ */
+function solarSystemMarkup(x: number, y: number, r: number, date: Date): string {
+  const time = Astronomy.MakeTime(date);
+  const strokeW = Math.max(0.6, r * 0.012);
+  const dot = r * 0.05;
+  const rings = PLANETS.map(({ body, color, size, ring }, i) => {
+    const orbitR = r * (0.22 + (i * 0.7) / (PLANETS.length - 1));
+    const [px, py] = polar(x, y, orbitR, screenAngle(longitudeOf(toGalactic(Astronomy.HelioVector(body, time)))));
+    const pr = Math.max(1.4, dot * size);
+    const saturnRing = ring
+      ? `<ellipse cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" rx="${(pr * 1.9).toFixed(1)}" ry="${(pr * 0.6).toFixed(1)}" fill="none" stroke="${color}" stroke-opacity="0.85" stroke-width="${(pr * 0.3).toFixed(1)}" transform="rotate(-20 ${px.toFixed(1)} ${py.toFixed(1)})" />`
+      : "";
+    return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${orbitR.toFixed(1)}" fill="none" stroke="#ffffff" stroke-opacity="0.28" stroke-width="${strokeW.toFixed(2)}" />
+      <circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${pr.toFixed(1)}" fill="${color}" stroke="#05070f" stroke-width="${(strokeW * 0.8).toFixed(2)}" />${saturnRing}`;
   });
   return `
-    <circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(size * 0.1).toFixed(1)}" fill="#0b1220" fill-opacity="0.55" stroke="#f7c56a" stroke-opacity="0.7" stroke-width="${(strokeW * 1.6).toFixed(2)}" />
-    ${markup.join("")}
-    <circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${Math.max(1.8, size * 0.013).toFixed(1)}" fill="#ffd66b" />`;
+    <defs>
+      <radialGradient id="solarSun" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#fff6d6" />
+        <stop offset="55%" stop-color="#ffcf4d" />
+        <stop offset="100%" stop-color="#ff9d2e" stop-opacity="0" />
+      </radialGradient>
+    </defs>
+    <circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r.toFixed(1)}" fill="#0b1220" fill-opacity="0.6" stroke="#f7c56a" stroke-opacity="0.75" stroke-width="${(strokeW * 1.5).toFixed(2)}" />
+    ${rings.join("")}
+    <circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(r * 0.13).toFixed(1)}" fill="url(#solarSun)" />`;
+}
+
+/** A compass rose at (x, y), radius `r`: N (gold, up), E, S, W -- the map's directions. */
+function compassMarkup(x: number, y: number, r: number): string {
+  const stroke = Math.max(1, r * 0.025);
+  const labelSize = r * 0.24;
+  const points = [
+    { label: "N", angle: -90, color: "#f7c56a" },
+    { label: "E", angle: 0, color: "#dfe8ff" },
+    { label: "S", angle: 90, color: "#dfe8ff" },
+    { label: "W", angle: 180, color: "#dfe8ff" },
+  ];
+  const ticks = Array.from({ length: 8 }, (_, i) => {
+    const angle = i * 45;
+    const [x1, y1] = polar(x, y, r * (i % 2 ? 0.86 : 0.8), angle);
+    const [x2, y2] = polar(x, y, r, angle);
+    return `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="#dfe8ff" stroke-opacity="0.7" stroke-width="${stroke.toFixed(1)}" />`;
+  }).join("");
+  const labels = points
+    .map(({ label, angle, color }) => {
+      const [lx, ly] = polar(x, y, r + labelSize * 0.9, angle);
+      return buildCenteredVectorTextMarkup(label, lx, ly - labelSize / 2, labelSize, { color, strokeWidth: 0.16, tracking: 0 });
+    })
+    .join("");
+  // The north needle: a gold arrowhead on the ring, pointing up.
+  const [nx, ny] = polar(x, y, r * 1.02, -90);
+  const needle = `<path d="M${nx.toFixed(1)} ${(ny - r * 0.06).toFixed(1)} L${(nx - r * 0.12).toFixed(1)} ${(ny + r * 0.18).toFixed(1)} L${(nx + r * 0.12).toFixed(1)} ${(ny + r * 0.18).toFixed(1)} Z" fill="#f7c56a" />`;
+  return `<g opacity="0.9"><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r.toFixed(1)}" fill="none" stroke="#dfe8ff" stroke-opacity="0.55" stroke-width="${stroke.toFixed(1)}" />${ticks}${needle}${labels}</g>`;
 }
 
 /**
@@ -123,7 +186,10 @@ function miniSolarSystemMarkup(x: number, y: number, size: number, date: Date): 
  */
 export function buildGalaxyMarkup(width: number, height: number, generationDate: string): string {
   const cx = width / 2;
-  const cy = height / 2;
+  // On a wide canvas the Galactic Center sits a little below the middle, so
+  // the Solar System (up and left of it, North being up) lands in open space
+  // below the top row (date panel and calmness gauge), not on it.
+  const cy = height / 2 + (width > height ? height * 0.18 : 0);
   const discR = width / 2;
   const scale = discR / DISC_KPC;
   // Labels and the Solar System inset stay a readable, fixed-ish size
@@ -195,6 +261,7 @@ export function buildGalaxyMarkup(width: number, height: number, generationDate:
       ${axes}
       ${labels}
     </g>
-    ${miniSolarSystemMarkup(sunX, sunY, ui, new Date(`${generationDate}T12:00:00Z`))}
+    ${compassMarkup(cx, cy, Math.min(width, height) * (width > height ? 0.075 : 0.1))}
+    ${solarSystemMarkup(sunX, sunY, Math.min(width, height) * 0.085, new Date(`${generationDate}T12:00:00Z`))}
   </g>`;
 }

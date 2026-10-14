@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#101322" />
+  <title>horospaper — offline</title>
+  <!-- The Android app's page for when the live site can't be reached (server.errorPath in capacitor.config.ts). -->
+  <style>
+    :root { color-scheme: dark; }
+    body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box; background: #101322; color: #e6e9f0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; text-align: center; }
+    main { max-width: 22rem; }
+    img { width: 96px; height: 96px; }
+    h1 { margin: 1rem 0 0.5rem; color: #f7c56a; font-size: 1.4rem; }
+    p { margin: 0 0 1.5rem; color: #9ba6b8; line-height: 1.5; }
+    button { padding: 0.7rem 1.4rem; border: 0; border-radius: 999px; background: linear-gradient(135deg, #f7c56a, #f2a65a); color: #101322; font-weight: 700; font-size: 1rem; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <main>
+    
+    <h1>You're offline</h1>
+    <p>Today's reading needs a connection to the sky above. Reconnect and try again.</p>
+    <!-- The live site (keep in step with server.url in capacitor.config.ts). -->
+    <button type="button" onclick="location.href = 'https://horospaper-app.vercel.app/home'">Try again</button>
+  </main>
+</body>
+</html>

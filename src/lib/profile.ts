@@ -2,9 +2,10 @@ import { randomUUID } from "node:crypto";
 import { redis, TTL_SECONDS } from "@/lib/redis";
 import { deleteHoroscopesForUser } from "@/lib/horoscope";
 import { deleteUsageForUser } from "@/lib/usage";
+import { isRegisteredDevice, unregisterDevice } from "@/lib/devices";
 import { BirthProfile } from "@/types/models";
 
-function profileKey(userId: string): string {
+export function profileKey(userId: string): string {
   return `profile:${userId}`;
 }
 
@@ -25,14 +26,18 @@ export async function saveBirthProfile(
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };
-  await redis.set(profileKey(userId), profile, { ex: TTL_SECONDS });
+  // Kept for 24 hours -- or, for the Android app's registered devices, until
+  // deleted, so each morning's chart can be made before the app is opened.
+  if (await isRegisteredDevice(userId)) await redis.set(profileKey(userId), profile);
+  else await redis.set(profileKey(userId), profile, { ex: TTL_SECONDS });
   return profile;
 }
 
-/** Removes everything stored for a guest: profile, today's/preview horoscopes, and usage. */
+/** Removes everything stored for a guest: profile, today's/preview horoscopes, usage, and its app registration. */
 export async function deleteUserData(userId: string): Promise<void> {
   await Promise.all([
     redis.del(profileKey(userId)),
+    unregisterDevice(userId),
     deleteHoroscopesForUser(userId),
     deleteUsageForUser(userId),
   ]);

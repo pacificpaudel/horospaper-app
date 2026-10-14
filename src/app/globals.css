@@ -30,6 +30,22 @@ html {
   color-scheme: dark;
 }
 
+/* Dropdown lists (the open list of a <select>, e.g. Birth timezone): dark,
+   like the rest of the form -- some browsers otherwise draw them white
+   while the text stays light, which makes them unreadable. */
+select {
+  color-scheme: dark;
+}
+select option,
+select optgroup {
+  background-color: var(--background-elevated);
+  color: var(--foreground);
+}
+select option:checked {
+  background-color: #2a2f4a;
+  color: var(--gold);
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
@@ -138,3 +154,15 @@ body {
   background: var(--accent-soft);
   color: white;
 }
+/* The privacy policy page (app/privacy): readable long-form text. */
+.privacy-policy { line-height: 1.65; color: var(--foreground); }
+.privacy-policy h1 { margin: 0; font-family: var(--font-serif), serif; font-size: 2rem; font-weight: 600; color: var(--gold); }
+.privacy-policy h2 { margin: 1.8rem 0 0.5rem; font-size: 1.1rem; font-weight: 600; color: var(--gold); }
+.privacy-policy p { margin: 0.6rem 0; }
+.privacy-policy ul { margin: 0.6rem 0; padding-left: 1.25rem; list-style: disc; display: grid; gap: 0.4rem; }
+.privacy-policy a { color: var(--accent); text-decoration: underline; }
+.privacy-updated { color: var(--muted); font-size: 0.85rem; }
+.privacy-delete { margin-top: 0.4rem; padding: 0.55rem 1.1rem; border: 1px solid rgba(255, 32, 32, 0.6); border-radius: 999px; background: rgba(255, 32, 32, 0.12); color: #ff8a8a; font-weight: 600; cursor: pointer; }
+.privacy-delete:disabled { opacity: 0.6; cursor: wait; }
+.privacy-delete-done { color: #1aff5c; }
+.privacy-delete-error { color: #ff8a8a; }

@@ -1,0 +1,18 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">horospaper</string>
+    <string name="title_activity_main">horospaper</string>
+    <string name="package_name">com.horospaper.app</string>
+    <string name="custom_url_scheme">com.horospaper.app</string>
+
+    <!-- Home-screen widgets (see widgets/WidgetUpdater.java). -->
+    <string name="widget_luck_chart_label">Luck Chart</string>
+    <string name="widget_analysis_label">Luck Chart Analysis</string>
+    <string name="widget_wallpaper_label">Daily wallpaper</string>
+    <string name="widget_luck_chart_description">Today\'s Luck Chart, updated every morning</string>
+    <string name="widget_analysis_description">Today\'s Analysis: each graha\'s house and what it brings</string>
+    <string name="widget_wallpaper_description">Today\'s horospaper wallpaper</string>
+    <string name="widget_image_description">Today\'s horospaper</string>
+    <string name="widget_loading">Loading today\'s chart…</string>
+    <string name="widget_setup">Open horospaper and enter your birth details to see today\'s chart here</string>
+</resources>

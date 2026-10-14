@@ -160,6 +160,28 @@ function formatOffset(offset: number): string {
 
 const clock = (local: Date) => `${String(local.getUTCHours()).padStart(2, "0")}:${String(local.getUTCMinutes()).padStart(2, "0")}`;
 
+/**
+ * The Schumann graph as a quiet backdrop filling `box` (the wallpaper's
+ * weekday/date panel, corners rounded by `rx`): just the live spectrogram,
+ * dimmed and with no title, axes or labels, so the day and date stay
+ * readable on top and the wallpaper keeps its open space. The cropped
+ * graph's 72 hours end in hours not yet recorded (blank); it's stretched
+ * so the recorded part, up to `now`, fills the panel.
+ */
+export function buildGraphBackdropMarkup(box: Box, graph: SchumannGraph, rx: number, now: Date): string {
+  const clipId = `schumann-backdrop-${Math.round(box.x)}-${Math.round(box.y)}`;
+  const image = `data:image/jpeg;base64,${graph.jpeg.toString("base64")}`;
+  const rect = `x="${box.x.toFixed(1)}" y="${box.y.toFixed(1)}" width="${box.w.toFixed(1)}" height="${box.h.toFixed(1)}"`;
+  let picture = `<image ${rect} preserveAspectRatio="xMidYMid slice" href="${image}" opacity="0.5" />`;
+  if (graph.cropped) {
+    const [year, month, day] = graph.lastDay.split("-").map(Number);
+    const startMs = Date.UTC(year, month - 1, day - 2) - TOMSK_UTC_OFFSET_HOURS * HOUR_MS;
+    const recorded = Math.min(1, Math.max(0.2, (Math.min(now.getTime(), graph.updatedAt.getTime()) - startMs) / (PLOT_HOURS * HOUR_MS)));
+    picture = `<image x="${box.x.toFixed(1)}" y="${box.y.toFixed(1)}" width="${(box.w / recorded).toFixed(1)}" height="${box.h.toFixed(1)}" preserveAspectRatio="none" href="${image}" opacity="0.5" />`;
+  }
+  return `<clipPath id="${clipId}"><rect ${rect} rx="${rx.toFixed(1)}" /></clipPath><g clip-path="url(#${clipId})">${picture}<rect ${rect} fill="#0b1220" fill-opacity="0.35" /></g>`;
+}
+
 export function buildGraphMarkup(box: Box, graph: SchumannGraph, l: number, view: SchumannView): string {
   const { timeZone } = view;
   const c = graphChrome(l, graph.cropped);

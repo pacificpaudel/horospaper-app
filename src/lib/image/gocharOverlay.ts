@@ -114,7 +114,9 @@ function analysisMarkup(
   moonIllumination = 0.5,
   nepaliTitle?: ShapedText,
   nepaliReasons?: Record<string, ShapedText>,
-  moonSignNe?: ShapedText
+  moonSignNe?: ShapedText,
+  /** The "i" for the Agreement & Conflict details; off in a home-screen widget, which can't open it. */
+  withInfo = true
 ): string {
   const latinTitle = nepaliTitle ? " / ANALYSIS" : "ANALYSIS";
   const titleWidth = (s: number) => (nepaliTitle ? nepaliTitle.width * s * DEVANAGARI_SCALE : 0) + measureVectorText(latinTitle, s, titleStyle);
@@ -275,7 +277,7 @@ function analysisMarkup(
   // Named (the full-screen view): the "i" that opens the Agreement &
   // Conflict details -- the page lays its button over this (see
   // analysisInfoButton and LuckChartLayer).
-  if (named) {
+  if (named && withInfo) {
     const { cx, cy, r } = analysisInfoButton(box);
     const stroke = Math.max(1, r * 0.12);
     parts.push(
@@ -393,7 +395,15 @@ export function buildGocharMarkup(
    * Nepali reason (by its text), and `moonSignNe` the natal Moon sign in
    * Nepali, for its Analysis.
    */
-  opts: { zoom?: boolean; nepaliNames?: Record<string, ShapedText>; analysisTitle?: ShapedText; nepaliReasons?: Record<string, ShapedText>; moonSignNe?: ShapedText } = {}
+  opts: {
+    zoom?: boolean;
+    nepaliNames?: Record<string, ShapedText>;
+    analysisTitle?: ShapedText;
+    nepaliReasons?: Record<string, ShapedText>;
+    moonSignNe?: ShapedText;
+    /** Just the chart, or just the Analysis -- the Android home-screen widgets (see buildLuckChartWidgetSvg). */
+    only?: "chart" | "analysis";
+  } = {}
 ): string {
   const { x0, y0, size, caption, facts, strip } = layout;
   const [year, month, day] = onDate.split("-").map(Number);
@@ -459,6 +469,14 @@ export function buildGocharMarkup(
   const textLeft = centerX - widthAt(textSize) / 2;
   const textTop = caption.y + (layout.titleHeight - textSize) / 2;
 
+  const chart = kundliChartMarkup(x0, y0, size, today, null, previous, colorFor, houseFill, natalMoonSign, (name) => stays.get(name), opts.zoom, moonIllumination);
+  const analysis = (withInfo: boolean) =>
+    layout.analysis && natalMoonSign !== undefined
+      ? analysisMarkup(layout.analysis, today.planets.map((p) => p.name), allHouses, natalMoonSign, opts.zoom, opts.nepaliNames, moonIllumination, opts.analysisTitle, opts.nepaliReasons, opts.moonSignNe, withInfo)
+      : "";
+  if (opts.only === "chart") return `<g>${chart}</g>`;
+  if (opts.only === "analysis") return `<g>${analysis(false)}</g>`;
+
   const parts = [
     `<rect x="${caption.x.toFixed(1)}" y="${caption.y.toFixed(1)}" width="${caption.w.toFixed(1)}" height="${(caption.h + stroke).toFixed(1)}" rx="${radius.toFixed(1)}" fill="#080b16" />`,
     devanagariMarkup(layout.titleText, textLeft, textTop + textSize - textSize * DEVANAGARI_SCALE * 0.72, textSize * DEVANAGARI_SCALE, "#f7c56a"),
@@ -473,10 +491,8 @@ export function buildGocharMarkup(
     facts ? devanagariMarkup(facts.text, centerX, caption.y + layout.titleHeight + (caption.h - layout.legendHeight - layout.titleHeight - facts.size) / 2 - facts.size * 0.15, facts.size, PANCHANG_FACTS_COLOR, "center") : "",
     // Zoomed, the legend is just the three colours.
     qualityLegend(centerX, caption.y + caption.h - layout.legendHeight, layout.legendHeight, caption.w * (opts.zoom ? 0.6 : 1), moved && !opts.zoom),
-    kundliChartMarkup(x0, y0, size, today, null, previous, colorFor, houseFill, natalMoonSign, (name) => stays.get(name), opts.zoom, moonIllumination),
-    layout.analysis && natalMoonSign !== undefined
-      ? analysisMarkup(layout.analysis, today.planets.map((p) => p.name), allHouses, natalMoonSign, opts.zoom, opts.nepaliNames, moonIllumination, opts.analysisTitle, opts.nepaliReasons, opts.moonSignNe)
-      : "",
+    chart,
+    analysis(true),
   ];
   if (strip) {
     const { box, lines, size: lineSize, lineHeight, padY } = strip;
@@ -536,4 +552,52 @@ export async function buildLuckChartViewSvg(
       lines: agreementLines(allHouses),
     },
   };
+}
+
+/**
+ * A home-screen widget's picture (see app/api/widget): just today's Luck
+ * Chart, or just its Analysis, drawn the same way as the full-screen view
+ * to fill a `width`x`height` widget on the app's dark background.
+ */
+export async function buildLuckChartWidgetSvg(
+  kind: "chart" | "analysis",
+  width: number,
+  height: number,
+  kundli: KundliData,
+  onDate: string
+): Promise<string> {
+  const moonSign = kundli.planets.find((planet) => planet.name === "Moon")?.sign;
+  const moonSignName = moonSign !== undefined ? SIGN_NAMES_NE[moonSign] : undefined;
+  const shapeAll = (texts: [string, string][]) => Promise.all(texts.map(async ([key, text]) => [key, await shapeDevanagariText(text)] as const));
+  const [titleText, names, analysisTitle, reasons, moonSignNe] = await Promise.all([
+    shapeDevanagariText("भाग्य कुन्डली"),
+    shapeAll(Object.entries(NEPALI_NAMES)),
+    shapeDevanagariText("विष्लेषण"),
+    shapeAll(nepaliReasonTexts().map((text) => [text, text])),
+    moonSignName ? shapeDevanagariText(moonSignName) : undefined,
+  ]);
+  const pad = Math.round(Math.min(width, height) * 0.03);
+  const size = Math.min(width, height) - pad * 2;
+  // Only the chart's square or the analysis box is drawn (opts.only); the rest is unused.
+  const layout: GocharLayout = {
+    x0: (width - size) / 2,
+    y0: (height - size) / 2,
+    size,
+    caption: { x: 0, y: 0, w: width, h: 0 },
+    titleHeight: 0,
+    legendHeight: 0,
+    titleText,
+    facts: null,
+    analysis: { x: pad, y: pad, w: width - pad * 2, h: height - pad * 2 },
+    strip: null,
+  };
+  const markup = buildGocharMarkup(layout, kundli, onDate, {
+    zoom: true,
+    nepaliNames: Object.fromEntries(names),
+    analysisTitle,
+    nepaliReasons: Object.fromEntries(reasons),
+    moonSignNe,
+    only: kind,
+  });
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="${width}" height="${height}" fill="#05070f" />${markup}</svg>`;
 }

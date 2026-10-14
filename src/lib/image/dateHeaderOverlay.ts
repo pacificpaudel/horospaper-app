@@ -84,8 +84,17 @@ export interface DateHeader {
  * tags panel, for something drawn right under the date (the Schumann
  * graph -- see compositeOverlay.ts).
  */
-export function buildDateHeader(width: number, height: number, generationDate: string, tags?: string[], insertHeight = 0, nepaliWeekday?: ShapedText | null): DateHeader {
-  return dateHeaderLayout(width, height, generationDate, tags, insertHeight, nepaliWeekday ?? null);
+export function buildDateHeader(
+  width: number,
+  height: number,
+  generationDate: string,
+  tags?: string[],
+  insertHeight = 0,
+  nepaliWeekday?: ShapedText | null,
+  /** Drawn inside the date panel, behind its text (the live Schumann graph -- see compositeOverlay.ts), given the panel and its corner radius. */
+  backdrop?: (box: { x: number; y: number; w: number; h: number }, rx: number) => string
+): DateHeader {
+  return dateHeaderLayout(width, height, generationDate, tags, insertHeight, nepaliWeekday ?? null, backdrop);
 }
 
 /** Nepali weekday names, Sunday first -- shaped by the caller (see shapeNepaliWeekday). */
@@ -101,7 +110,15 @@ export async function shapeNepaliWeekday(generationDate: string): Promise<Shaped
   }
 }
 
-function dateHeaderLayout(width: number, height: number, generationDate: string, tags: string[] | undefined, insertHeight: number, nepaliWeekday: ShapedText | null): DateHeader {
+function dateHeaderLayout(
+  width: number,
+  height: number,
+  generationDate: string,
+  tags: string[] | undefined,
+  insertHeight: number,
+  nepaliWeekday: ShapedText | null,
+  backdrop?: (box: { x: number; y: number; w: number; h: number }, rx: number) => string
+): DateHeader {
   const { weekday, dateLine } = describeDate(generationDate);
   const minDim = Math.min(width, height);
   const centerX = width / 2;
@@ -139,9 +156,10 @@ function dateHeaderLayout(width: number, height: number, generationDate: string,
   markup.push(buildCenteredVectorTextMarkup(dateLine, centerX, y, dateSize, dateStyle));
 
   const backdropBottom = y + dateSize + padBottom;
-  markup.unshift(panelRect(blockWidth, centerX, backdropTop, backdropBottom, dateSize));
   const boxPadX = Math.round(dateSize * 1.3); // as in panelRect
   const dateBox = { x: centerX - blockWidth / 2 - boxPadX, y: backdropTop, w: blockWidth + boxPadX * 2, h: backdropBottom - backdropTop };
+  // The panel, then anything shown behind the text (the Schumann graph), then the text.
+  markup.unshift(panelRect(blockWidth, centerX, backdropTop, backdropBottom, dateSize), backdrop ? backdrop(dateBox, dateSize * 0.9) : "");
   const right = dateBox.x + dateBox.w;
 
   let bottom = backdropBottom + insertHeight;

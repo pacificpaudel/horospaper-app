@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The widgets' rounded, dark card (the app's background colour). -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#05070F" />
+    <corners android:radius="16dp" />
+</shape>
