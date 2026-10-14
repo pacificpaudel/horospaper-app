@@ -6,7 +6,7 @@ import { fittedPlanetBodyMarkup, planetBodyFor } from "./planetBodies";
 import { getMoonPhase } from "@/lib/astrology/ephemeris";
 import { buildVectorTextMarkup, measureVectorText, TextStyle, wrapVectorText } from "./vectorFont";
 import type { Box } from "./schumannOverlay";
-import { gocharAssessment, gocharQuality, GocharQuality, nepaliReasonTexts, VEDHA_BLOCKED_NE } from "@/lib/astrology/gochar";
+import { GOCHAR_THEMES, gocharAssessment, gocharQuality, GocharQuality, gocharThemeReadings, nepaliReasonTexts, VEDHA_BLOCKED_NE } from "@/lib/astrology/gochar";
 import { layoutLuckChartView, type GocharLayout } from "./wallpaperLayout";
 import type { DailyReading } from "@/lib/dailyReading";
 
@@ -83,6 +83,11 @@ const NEPALI_NAMES: Record<string, string> = {
 };
 
 const SIGN_NAMES = ["", "ARIES", "TAURUS", "GEMINI", "CANCER", "LEO", "VIRGO", "LIBRA", "SCORPIO", "SAGITTARIUS", "CAPRICORN", "AQUARIUS", "PISCES"];
+/** An Analysis row whose reading another graha outweighs (see gocharThemeReadings). */
+const OUTWEIGHED_COLOR = "#b08a62";
+/** The Agreement & Conflict section's heading, in Nepali. */
+const THEMES_HEADING_NE = "मेल र द्वन्द्व";
+
 const SIGN_NAMES_NE = ["", "मेष", "वृष", "मिथुन", "कर्कट", "सिंह", "कन्या", "तुला", "वृश्चिक", "धनु", "मकर", "कुम्भ", "मीन"];
 const ordinal = (n: number) => `${n}${n % 10 === 1 && n !== 11 ? "ST" : n % 10 === 2 && n !== 12 ? "ND" : n % 10 === 3 && n !== 13 ? "RD" : "TH"}`;
 
@@ -115,6 +120,10 @@ function analysisMarkup(
   const titleWidth = (s: number) => (nepaliTitle ? nepaliTitle.width * s * DEVANAGARI_SCALE : 0) + measureVectorText(latinTitle, s, titleStyle);
   const rows = planets.map((name) => ({ name, house: allHouses[name], ...gocharAssessment(name, allHouses[name], allHouses) }));
   const named = roomy && nepaliNames !== undefined;
+  // Grahas whose readings are outweighed by a heavier graha's on the same
+  // area of life (see gocharThemeReadings) fade to light brown.
+  const { themes, outweighed } = gocharThemeReadings(allHouses);
+  const rowColor = (row: (typeof rows)[number]) => (outweighed.has(row.name) ? OUTWEIGHED_COLOR : QUALITY_COLORS[row.quality]);
   // Each graha's figure, in a FIGURE_W x FIGURE_H box (shares of the text
   // size), then the Nepali name; the coloured dot stands in without them.
   const FIGURE_W = 1.7;
@@ -171,6 +180,34 @@ function analysisMarkup(
     if (reasonNeWidth(ne, s) + measureVectorText(joined, s * 0.9, reasonStyle) <= width) return [{ ne, text: joined }];
     return [{ ne, text: " /" }, ...wrapped];
   };
+  // Named, the Agreement & Conflict section under the grahas, across the
+  // panel's full width: each area of life two or more grahas speak to, in
+  // the agreeing or winning side's colour, naming only who wins -- e.g.
+  // "धन / WEALTH: SATURN WINS OVER SUN · BAD".
+  type ThemeLine = ReasonLine & { color: string };
+  let themeLayout: ThemeLine[] = [];
+  const themesHeading = " / AGREEMENT & CONFLICT";
+  const themeLines = (s: number): ThemeLine[] => {
+    if (!named || !themes.length) return [];
+    return themes.flatMap((reading) => {
+      const { en, ne: neText } = GOCHAR_THEMES[reading.theme];
+      const names = (list: string[]) => list.map((name) => name.toUpperCase()).join(", ");
+      const statement =
+        reading.kind === "agree"
+          ? `${names(reading.winners)} AGREE · ${reading.quality.toUpperCase()}`
+          : reading.kind === "balanced"
+            ? `${names(reading.winners)} BALANCE OUT`
+            : `${names(reading.winners)} ${reading.winners.length > 1 ? "WIN" : "WINS"} OVER ${names(reading.losers)} · ${reading.quality.toUpperCase()}`;
+      const color = QUALITY_COLORS[reading.quality];
+      const ne = nepaliReasons?.[neText];
+      const label = `${ne ? " / " : ""}${en}: `;
+      const labelWidth = (ne ? reasonNeWidth(ne, s) : 0) + measureVectorText(label, s * 0.9, reasonStyle);
+      if (labelWidth + measureVectorText(statement, s * 0.9, reasonStyle) <= innerW) return [{ ne, text: label + statement, color }];
+      return [{ ne, text: label.trimEnd(), color }, ...wrapVectorText(statement, innerW - s, s * 0.9, reasonStyle).map((text) => ({ text: ` ${text}`, color }))];
+    });
+  };
+  const themesHeight = (lines: ThemeLine[], s: number) =>
+    lines.length ? s * 0.3 + s * headStep + lines.reduce((sum, line) => sum + s * (line.ne ? headStep + REASON_NE_AIR : lineStep), 0) + s * 0.3 : 0;
   // Named rows get a little more air above, for the Devanagari's matras.
   const rowHeight = (row: { head: string[]; reason: ReasonLine[] }, s: number) =>
     s * headStep +
@@ -186,16 +223,18 @@ function analysisMarkup(
           name: row.name,
           head: split ? [row.name.toUpperCase(), verdict] : [`${row.name.toUpperCase()} · ${verdict}`],
           reason: reasonLines(row, s),
-          color: QUALITY_COLORS[row.quality],
+          color: rowColor(row),
         };
       });
+      themeLayout = themeLines(s);
       const tallest = Math.max(...Array.from({ length: columns }, (_, c) => layout.slice(c * perColumn, (c + 1) * perColumn).reduce((sum, row) => sum + rowHeight(row, s), 0)));
-      height = padY * 2 + s * 1.3 * 1.8 + s * 0.85 * 1.7 + tallest + s * 0.8 * 1.6;
+      height = padY * 2 + s * 1.3 * 1.8 + s * 0.85 * 1.7 + tallest + themesHeight(themeLayout, s) + s * 0.8 * 1.6;
       const widthOk =
         titleWidth(s * 1.3) <= innerW &&
         subtitleWidth(s * 0.85) <= innerW &&
         layout.every((row) => row.head.every((line, k) => (k === 0 ? nepaliWidth(row.name, s) : 0) + measureVectorText(line, s, titleStyle) <= colW - lead(s))) &&
-        layout.every((row) => row.reason.every((line) => !line.ne || reasonNeWidth(line.ne, s) + measureVectorText(line.text, s * 0.9, reasonStyle) <= colW - lead(s)));
+        layout.every((row) => row.reason.every((line) => !line.ne || reasonNeWidth(line.ne, s) + measureVectorText(line.text, s * 0.9, reasonStyle) <= colW - lead(s))) &&
+        themeLayout.every((line) => (line.ne ? reasonNeWidth(line.ne, s) : 0) + measureVectorText(line.text, s * 0.9, reasonStyle) <= innerW);
       if (height <= box.h && widthOk) break fitting;
     }
     size *= 0.93;
@@ -259,6 +298,32 @@ function analysisMarkup(
     y += size * 0.45;
     bottom = Math.max(bottom, y);
   });
+  if (themeLayout.length) {
+    // A hairline across the panel, then the heading and one line per area.
+    y = bottom + size * 0.3;
+    parts.push(`<line x1="${(box.x + pad).toFixed(1)}" y1="${(y - size * 0.15).toFixed(1)}" x2="${(box.x + box.w - pad).toFixed(1)}" y2="${(y - size * 0.15).toFixed(1)}" stroke="#f7c56a" stroke-opacity="0.35" stroke-width="${Math.max(1, size * 0.05).toFixed(1)}" />`);
+    y += size * 0.25;
+    let headingX = box.x + pad;
+    const headingNe = nepaliReasons?.[THEMES_HEADING_NE];
+    if (headingNe) {
+      parts.push(devanagariMarkup(headingNe, headingX, y + size - size * DEVANAGARI_SCALE * 0.72, size * DEVANAGARI_SCALE, titleStyle.color!));
+      headingX += headingNe.width * size * DEVANAGARI_SCALE;
+    }
+    parts.push(buildVectorTextMarkup(headingNe ? themesHeading : themesHeading.slice(3), headingX, y, size, titleStyle));
+    y += size * headStep - size * 0.25;
+    for (const line of themeLayout) {
+      let lineX = box.x + pad;
+      if (line.ne) {
+        y += size * REASON_NE_AIR;
+        const neSize = size * 0.9 * DEVANAGARI_SCALE;
+        parts.push(devanagariMarkup(line.ne, lineX, y + size * 0.9 - neSize * 0.72, neSize, line.color));
+        lineX += reasonNeWidth(line.ne, size);
+      }
+      parts.push(buildVectorTextMarkup(line.text, lineX, y, size * 0.9, { ...reasonStyle, color: line.color }));
+      y += size * (line.ne ? headStep : lineStep);
+    }
+    bottom = y + size * 0.3;
+  }
   parts.push(buildVectorTextMarkup(footer, box.x + pad, bottom + size * 0.3, size * 0.8, noteStyle));
   return `<g>${parts.join("")}</g>`;
 }
@@ -443,7 +508,7 @@ export async function buildLuckChartViewSvg(width: number, height: number, kundl
     layoutLuckChartView(width, height, panchang),
     shapeAll(Object.entries(NEPALI_NAMES)),
     shapeDevanagariText("विष्लेषण"),
-    shapeAll(nepaliReasonTexts().map((text) => [text, text])),
+    shapeAll([...nepaliReasonTexts(), THEMES_HEADING_NE].map((text) => [text, text])),
     moonSignName ? shapeDevanagariText(moonSignName) : undefined,
   ]);
   const markup = buildGocharMarkup(layout, kundli, onDate, {

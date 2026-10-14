@@ -9,6 +9,7 @@ import { buildCenteredVectorTextMarkup, measureVectorText, TextStyle } from "./v
 import { DEVANAGARI_LABELS } from "./devanagariLabels";
 import { embedChartSvg } from "./chartSvgOutline";
 import { fittedPlanetBodyMarkup, PLANET_BODY_EXTENT, planetBodyFor } from "./planetBodies";
+import { ZODIAC_COLORS, ZODIAC_SIGNS, zodiacIconMarkup } from "./zodiacIcons";
 
 // The person's birth chart as a North-Indian kundli, drawn opaque just above
 // the luck meter, labelled in Nepali like freeastrologyapi.com's Nepali
@@ -294,6 +295,33 @@ function spanAt(polygon: [number, number][], axis: 0 | 1, v: number): [number, n
     hits.push(a[1 - axis] + t * (b[1 - axis] - a[1 - axis]));
   });
   return [Math.min(...hits), Math.max(...hits)];
+}
+
+/**
+ * House i's inscribed circle (fractions of the side): the largest circle
+ * that fits it -- the diamonds' is much larger than the triangles'. Both
+ * shapes are tangential, so the radius is 2 * area / perimeter; the center
+ * is the incenter (triangles) or the middle (diamonds).
+ */
+function houseIncircle(i: number): { cx: number; cy: number; r: number } {
+  const poly = HOUSE_POLYGONS[i];
+  const sides = poly.map((a, k) => Math.hypot(poly[(k + 1) % poly.length][0] - a[0], poly[(k + 1) % poly.length][1] - a[1]));
+  const area = Math.abs(poly.reduce((sum, a, k) => sum + a[0] * poly[(k + 1) % poly.length][1] - poly[(k + 1) % poly.length][0] * a[1], 0)) / 2;
+  const perimeter = sides.reduce((sum, side) => sum + side, 0);
+  if (poly.length !== 3) return { cx: poly.reduce((s, p) => s + p[0], 0) / poly.length, cy: poly.reduce((s, p) => s + p[1], 0) / poly.length, r: (2 * area) / perimeter };
+  // Incenter: the corners weighted by the length of the side opposite each.
+  const weights = poly.map((_, k) => sides[(k + 1) % 3]);
+  return {
+    cx: poly.reduce((s, p, k) => s + p[0] * weights[k], 0) / perimeter,
+    cy: poly.reduce((s, p, k) => s + p[1] * weights[k], 0) / perimeter,
+    r: (2 * area) / perimeter,
+  };
+}
+
+/** A hex colour mixed `amount` (0-1) of the way to white. */
+function lighten(hex: string, amount: number): string {
+  const channel = (k: number) => Math.round(parseInt(hex.slice(1 + k * 2, 3 + k * 2), 16) * (1 - amount) + 255 * amount);
+  return `#${[0, 1, 2].map((k) => channel(k).toString(16).padStart(2, "0")).join("")}`;
 }
 
 /** Half-size (fraction of the side) kept clear around a house's icon / number circles. */
@@ -611,6 +639,23 @@ export function kundliChartMarkup(
     return `<path d="${shape}" fill="#080b16" stroke="#c9cfdc" stroke-width="${lineW.toFixed(1)}" stroke-linejoin="round" />${buildCenteredVectorTextMarkup(String(i + 1), cx, (eave + bottom) / 2 - houseNumberSize / 2, houseNumberSize, houseNumberStyle)}`;
   }).join("");
 
+  // The natal Moon sign (the rashi) as a faint watermark filling the house
+  // the Moon count starts from, as large as that house allows: the sign's
+  // own drawing without its badge, lightened to read on the dark chart.
+  let watermark = "";
+  if (moonSign !== undefined) {
+    const i = (moonSign - kundli.ascendantSign + 12) % 12;
+    const sign = ZODIAC_SIGNS[moonSign - 1];
+    const { cx, cy, r } = houseIncircle(i);
+    // The drawings fill ~85% of their 100-unit box, so the box slightly
+    // overshoots the circle to fill it.
+    const side = r * 2 * 1.1 * size;
+    // Clipped to the house, so no stray detail crosses into the next one.
+    const clipId = `rashi-mark-${Math.round(x0)}-${Math.round(y0)}`;
+    const outline = `M${HOUSE_POLYGONS[i].map(([fx, fy]) => P(fx, fy)).join(" L")} Z`;
+    watermark = `<clipPath id="${clipId}"><path d="${outline}" /></clipPath><g clip-path="url(#${clipId})"><g opacity="0.3" transform="translate(${(x0 + cx * size - side / 2).toFixed(1)} ${(y0 + cy * size - side / 2).toFixed(1)}) scale(${(side / 100).toFixed(4)})">${zodiacIconMarkup(sign, "#080b16", lighten(ZODIAC_COLORS[sign], 0.6))}</g></g>`;
+  }
+
   // House counted from the natal Moon sign (what gochar results are read
   // from), in a green circle a little larger than the rashi number's.
   const moonCountR = size * 0.036 * scale;
@@ -658,6 +703,7 @@ export function kundliChartMarkup(
     ${header}
     <rect x="${x0}" y="${y0}" width="${size}" height="${size}" fill="none" stroke="#f7c56a" stroke-width="${stroke.toFixed(1)}" />
     ${houseTints}
+    ${watermark}
     <path d="${lines.join(" ")}" fill="none" stroke="#f7c56a" stroke-opacity="0.85" stroke-width="${stroke.toFixed(1)}" />
     ${houseIcons}
     ${numbers}

@@ -162,12 +162,122 @@ const TRANSIT_REASONS_NE: Record<Graha, string[]> = {
   ketu: RAHU_REASONS_NE,
 };
 
+/** The areas of life the transit results speak to, for comparing grahas' readings. */
+export const GOCHAR_THEMES = {
+  W: { en: "WEALTH", ne: "धन" },
+  H: { en: "HEALTH", ne: "स्वास्थ्य" },
+  J: { en: "HAPPINESS", ne: "सुख" },
+  S: { en: "STATUS", ne: "पद, मान" },
+  F: { en: "FAMILY", ne: "परिवार" },
+  U: { en: "SUCCESS", ne: "सफलता" },
+  P: { en: "SAFETY", ne: "सुरक्षा" },
+} as const;
+export type GocharTheme = keyof typeof GOCHAR_THEMES;
+
+// Which areas each result (English, as in TRANSIT_REASONS) speaks to, as
+// GOCHAR_THEMES letters. Whether it speaks for or against them is the
+// transit's own quality: good results for, bad (and neutral) against.
+const REASON_THEMES: Record<string, string> = {
+  "SICKNESS, DANGER": "HP", "LOSS OF WEALTH": "W", HAPPINESS: "J", SORROW: "J", "FINANCIAL LOSS": "W",
+  LOSS: "W", "DANGER TO LIFE": "HP", GAIN: "W", EXPENDITURE: "W",
+  "FATIGUE, LOSS OF WEALTH": "HW", "LOSS OF WEALTH, DECEIT": "WP", "NEW POSITION, MONEY, HEALTH": "SWH",
+  "ILLNESS, OBSTACLES": "HU", "AGITATION, ILL-HEALTH": "PH", "ENEMIES AND ILLS DEFEATED": "PH",
+  "TIRING TRAVEL, ILLNESS": "H", "FEAR, ILLNESS, QUARRELS": "PH", "DANGER, HUMILIATION": "PS",
+  "GREAT TASKS SUCCEED": "U", "HONOUR, WEALTH, HEALTH": "SWH", "SORROW, LOSS, FEVER": "JWH",
+  "FORTUNE DAWNS": "WU", SUCCESS: "U", FEAR: "P", "FREEDOM FROM DISEASE": "H", "UNTOWARD EVENTS": "P",
+  SICKNESS: "H", "WISHES FULFILLED": "U", JOY: "J",
+  "ILLNESS, SEPARATION": "HF", "FEAR, LOSS OF WEALTH": "PW", "SUCCESS, HAPPINESS": "UJ",
+  "LOSS OF POSITION, ILLNESS": "SH", "FEVER, ANGUISH": "HJ", "VICTORY OVER ENEMIES, GAIN": "PW",
+  "DISCORD, ILLNESS": "FH", "FEVER, LOSS OF HONOUR": "HS", "LOSS OF WEALTH, WEAKNESS": "WH",
+  "FAILURE, EXHAUSTION": "UH", "GAIN, HEALTH, PROPERTY": "WH", "LOSS OF WEALTH, ILLNESS": "WH",
+  "FINANCIAL GAIN": "W", "FEAR FROM ENEMIES": "P", "MONEY COMES IN": "W", "QUARRELS AT HOME": "F",
+  MISUNDERSTANDINGS: "F", "CHILDREN, WEALTH": "FW", IMPEDIMENTS: "U", "HAPPINESS ALL ROUND": "J",
+  PROSPERITY: "W", "FEAR OF HUMILIATION": "S",
+  "HEAVY EXPENSE, TRAVEL": "W", "MONEY, HAPPY HOME": "WF", "HUMILIATION, DANGER": "SP",
+  "CHILDREN, ROYAL FAVOUR": "FS", "ENEMIES, DISEASE": "PH", "HAPPY MARRIAGE, GOOD TRAVEL": "FJ",
+  "MISERY, LOSS OF MONEY": "JW", "ALL PROSPERITY": "W", "DANGER TO PROPERTY": "W",
+  "HONOUR, NEW POSITION": "S", "GRIEF AND FEAR": "JP",
+  "ALL ENJOYMENTS": "J", "HAPPINESS, FRIENDS": "JF", CHILDREN: "F", MISHAP: "P", "TROUBLE TO SPOUSE": "F",
+  WEALTH: "W", QUARRELS: "F", SAFETY: "P", "MONEY GAINED": "W",
+  DISEASE: "H", "TROUBLE TO WEALTH, CHILDREN": "WF", "POSITION, SERVANTS, MONEY": "SW",
+  "LOSS OF SPOUSE, WEALTH": "FW", "WEALTH DECLINES": "W", "SPOUSE SUFFERS, FEAR": "FP", "LOSSES, DISEASE": "WH",
+  "LOSSES, OBSTACLES": "WU", "LOSS OF HONOUR, DISEASE": "SH", "HAPPINESS, WEALTH, HONOUR": "JWS",
+  "ROBBED, FAMILY ILLNESS": "WF",
+};
+
+// How much each graha's reading weighs when two disagree: the slower the
+// transit, the longer and stronger its result -- Saturn's ~2.5 years in a
+// sign outweighs the Sun's month, which outweighs the Moon's 2.5 days.
+const GRAHA_WEIGHT: Record<Graha, number> = { saturn: 5, rahu: 4, ketu: 4, jupiter: 4, mars: 3, sun: 2, venus: 2, mercury: 2, moon: 1 };
+// Neutral results are the milder setbacks (expense, sorrow, quarrels): they
+// count against an area at half weight.
+const NEUTRAL_SHARE = 0.5;
+
+/** One area two or more grahas' readings speak to, and how it comes out. */
+export interface GocharThemeReading {
+  theme: GocharTheme;
+  /** All agree; one side outweighs the other; or the two sides weigh the same. */
+  kind: "agree" | "conflict" | "balanced";
+  /** The outcome: the agreeing or winning side's ("neutral" when balanced). */
+  quality: GocharQuality;
+  /** The agreeing or winning grahas (both sides when balanced), heaviest first. */
+  winners: string[];
+  /** The outweighed grahas (none unless kind is "conflict"). */
+  losers: string[];
+}
+
+/**
+ * Compares every graha's reading by the areas of life it speaks to: each
+ * area two or more grahas speak to, agreeing or not, and the grahas
+ * `outweighed` -- those on the losing side of some conflict and the winning
+ * side of none. Vedha-blocked grahas don't take part (their result is
+ * cancelled). `allHouses` is every graha's current house from the Moon, by
+ * English name.
+ */
+export function gocharThemeReadings(allHouses: Record<string, number>): { themes: GocharThemeReading[]; outweighed: Set<string> } {
+  type Voice = { name: string; weight: number; good: boolean };
+  const voices = new Map<GocharTheme, Voice[]>();
+  for (const [name, house] of Object.entries(allHouses)) {
+    const graha = name.toLowerCase() as Graha;
+    if (!GRAHA_WEIGHT[graha]) continue;
+    const { quality, reason, blockedBy } = gocharAssessment(name, house, allHouses);
+    if (blockedBy) continue;
+    for (const letter of REASON_THEMES[reason] ?? "") {
+      const theme = letter as GocharTheme;
+      const voice = { name, weight: GRAHA_WEIGHT[graha] * (quality === "neutral" ? NEUTRAL_SHARE : 1), good: quality === "good" };
+      voices.set(theme, [...(voices.get(theme) ?? []), voice]);
+    }
+  }
+  const heaviestFirst = (list: Voice[]) => [...list].sort((a, b) => b.weight - a.weight).map((voice) => voice.name);
+  const sum = (list: Voice[]) => list.reduce((total, voice) => total + voice.weight, 0);
+  const themes: GocharThemeReading[] = [];
+  const lost = new Set<string>();
+  const won = new Set<string>();
+  for (const theme of Object.keys(GOCHAR_THEMES) as GocharTheme[]) {
+    const list = voices.get(theme) ?? [];
+    if (list.length < 2) continue;
+    const good = list.filter((voice) => voice.good);
+    const bad = list.filter((voice) => !voice.good);
+    if (!good.length || !bad.length) {
+      themes.push({ theme, kind: "agree", quality: good.length ? "good" : "bad", winners: heaviestFirst(list), losers: [] });
+    } else if (sum(good) === sum(bad)) {
+      themes.push({ theme, kind: "balanced", quality: "neutral", winners: heaviestFirst(list), losers: [] });
+    } else {
+      const [winners, losers] = sum(good) > sum(bad) ? [good, bad] : [bad, good];
+      themes.push({ theme, kind: "conflict", quality: winners === good ? "good" : "bad", winners: heaviestFirst(winners), losers: heaviestFirst(losers) });
+      winners.forEach((voice) => won.add(voice.name));
+      losers.forEach((voice) => lost.add(voice.name));
+    }
+  }
+  return { themes, outweighed: new Set([...lost].filter((name) => !won.has(name))) };
+}
+
 /** In Nepali, a favorable transit cancelled by vedha: "good house, blocked by vedha". */
 export const VEDHA_BLOCKED_NE = "शुभ भाव, वेधले रोकियो";
 
-/** Every Nepali reason gocharAssessment can give (plus VEDHA_BLOCKED_NE), e.g. to shape them ahead of drawing. */
+/** Every Nepali reason gocharAssessment can give (plus VEDHA_BLOCKED_NE and the themes' names), e.g. to shape them ahead of drawing. */
 export function nepaliReasonTexts(): string[] {
-  return [...new Set([...Object.values(TRANSIT_REASONS_NE).flat(), VEDHA_BLOCKED_NE])];
+  return [...new Set([...Object.values(TRANSIT_REASONS_NE).flat(), VEDHA_BLOCKED_NE, ...Object.values(GOCHAR_THEMES).map((theme) => theme.ne)])];
 }
 
 export interface GocharAssessment {

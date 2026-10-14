@@ -185,9 +185,9 @@ export function isZodiacSign(value: string): value is ZodiacSign {
   return (ZODIAC_SIGNS as string[]).includes(value);
 }
 
-/** The sign's drawing as SVG markup for a 100x100 box (no <svg> wrapper). */
-export function zodiacIconMarkup(sign: ZodiacSign, detailColor = ZODIAC_BADGE): string {
-  return DRAWINGS[sign](ZODIAC_COLORS[sign], detailColor);
+/** The sign's drawing as SVG markup for a 100x100 box (no <svg> wrapper), optionally in a colour other than its own. */
+export function zodiacIconMarkup(sign: ZodiacSign, detailColor = ZODIAC_BADGE, color = ZODIAC_COLORS[sign]): string {
+  return DRAWINGS[sign](color, detailColor);
 }
 
 /** The sign as a standalone, transparent-background SVG document. */
