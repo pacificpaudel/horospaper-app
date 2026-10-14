@@ -3,6 +3,7 @@ import { Geist } from "next/font/google";
 import { Cormorant_Garamond } from "next/font/google";
 import "./globals.css";
 import { Footer } from "@/components/Footer";
+import { Analytics } from "@vercel/analytics/next";
 
 const geistSans = Geist({
   variable: "--font-sans",
@@ -31,6 +32,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <div className="cosmic-backdrop" aria-hidden="true" />
         {children}
         <Footer />
+        <Analytics />
       </body>
     </html>
   );
