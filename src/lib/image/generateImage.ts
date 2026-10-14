@@ -68,7 +68,7 @@ interface RenderedUrls {
 
 export interface GeneratedImage extends RenderedUrls {
   prompt: string;
-  provider: "openai" | "pexels" | "openverse" | "mock";
+  provider: "openai" | "unsplash" | "openverse" | "mock";
   source: WallpaperSource;
   /** UTC hour of the Schumann data drawn on it (see schumann.ts). */
   schumannHour: string;
@@ -183,20 +183,20 @@ export async function generateHoroscopeImage(params: {
     }
   }
 
-  // Pexels' curated photos first, when there's a key: much better looking
-  // and better described than Openverse's, so far likelier to show the day.
-  const pexelsKey = process.env.PEXELS_API_KEY;
-  if (pexelsKey) {
+  // Unsplash's professional photos first, when there's a key: better
+  // looking and better ranked than Openverse's, so far likelier to show the day.
+  const unsplashKey = process.env.UNSPLASH_API_KEY;
+  if (unsplashKey) {
     try {
-      const { generatePexelsImage } = await import("./pexelsImage");
-      const result = await generatePexelsImage({ apiKey: pexelsKey, stableSeed, intent: params.reading.intent, randomize: randomizeArt });
+      const { generateUnsplashImage } = await import("./unsplashImage");
+      const result = await generateUnsplashImage({ accessKey: unsplashKey, stableSeed, intent: params.reading.intent, randomize: randomizeArt });
       const [urls, source] = await Promise.all([
         renderRaster(result.buffer, result.contentType, result.extension, ctx),
         saveSource(assetId, result.buffer, result.contentType, result.extension),
       ]);
-      return { ...urls, prompt: result.prompt, provider: "pexels", source, schumannHour: snapshot.hour };
+      return { ...urls, prompt: result.prompt, provider: "unsplash", source, schumannHour: snapshot.hour };
     } catch (err) {
-      console.error("[image] Pexels failed, falling back to Openverse:", err);
+      console.error("[image] Unsplash failed, falling back to Openverse:", err);
     }
   }
 
