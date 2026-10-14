@@ -28,8 +28,14 @@ export async function GET(request: NextRequest) {
   const kundli = horoscope?.dailyReading?.kundli;
   if (!horoscope?.dailyReading || !kundli) return NextResponse.json({ error: "No Luck Chart for that day" }, { status: 404 });
 
-  const svg = await buildLuckChartViewSvg(width, height, kundli, horoscope.generationDate, horoscope.dailyReading.panchang);
+  const { svg, info } = await buildLuckChartViewSvg(width, height, kundli, horoscope.generationDate, horoscope.dailyReading.panchang);
   return new NextResponse(svg, {
-    headers: { "Content-Type": "image/svg+xml; charset=utf-8", "Cache-Control": "private, no-store" },
+    headers: {
+      "Content-Type": "image/svg+xml; charset=utf-8",
+      "Cache-Control": "private, no-store",
+      // What the Analysis panel's "i" opens, and where it sits (URI-encoded
+      // JSON: headers are ASCII-only and this carries Devanagari).
+      ...(info ? { "X-Luck-Chart-Info": encodeURIComponent(JSON.stringify(info)) } : {}),
+    },
   });
 }

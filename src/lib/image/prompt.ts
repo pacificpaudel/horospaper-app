@@ -21,12 +21,19 @@ const STYLE_DESCRIPTORS: Record<ImageStyle, string> = {
  */
 export function buildImagePrompt(
   astrology: StructuredAstrologyData,
-  opts: { style: ImageStyle; luckyTheme: string; emotionalTheme: string }
+  opts: {
+    style: ImageStyle;
+    luckyTheme: string;
+    emotionalTheme: string;
+    /** The day as a literal scene (see dailyScenes): the picture's main subject. */
+    scene?: string;
+  }
 ): string {
   const { sunSign, today } = astrology;
 
   return [
-    `A beautiful, premium astrology artwork for a daily horoscope, no text or letters anywhere in the image.`,
+    `A beautiful, premium artwork for a daily horoscope, no text or letters anywhere in the image.`,
+    ...(opts.scene ? [`Main subject, shown clearly and realistically: ${opts.scene}.`] : []),
     `Style: ${STYLE_DESCRIPTORS[opts.style]}.`,
     `Represent the zodiac sign ${sunSign} through subtle symbolic elements, not literal text.`,
     `Reflect a ${today.moonPhaseName.toLowerCase()} moon and a mood of "${opts.emotionalTheme}".`,

@@ -533,7 +533,7 @@ function useBirthSnapshot({
           snapshot: local,
           possibleRashis,
           source: "local",
-          chartSvg: localKundli ? buildKundliSvg(localKundli) : null,
+          chartSvg: localKundli ? buildKundliSvg(localKundli, 400, local.moonIllumination) : null,
           mahadasha: (() => {
             const today = new Date().toISOString().slice(0, 10);
             return localKundli?.mahadashas?.find((p) => p.start <= today && today < p.end) ?? null;
@@ -567,7 +567,7 @@ function useBirthSnapshot({
                 // The app's own drawing (it matches the API's chart house for
                 // house), so the form shows the same numbered house icons and
                 // rashi circles as the wallpaper's Luck Chart.
-                chartSvg: localKundli ? buildKundliSvg(localKundli) : chart.chartSvg,
+                chartSvg: localKundli ? buildKundliSvg(localKundli, 400, local.moonIllumination) : chart.chartSvg,
                 mahadasha: chart.mahadasha,
                 timeMissing,
               });

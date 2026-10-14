@@ -84,7 +84,7 @@ const NEPALI_NAMES: Record<string, string> = {
 
 const SIGN_NAMES = ["", "ARIES", "TAURUS", "GEMINI", "CANCER", "LEO", "VIRGO", "LIBRA", "SCORPIO", "SAGITTARIUS", "CAPRICORN", "AQUARIUS", "PISCES"];
 /** An Analysis row whose reading another graha outweighs (see gocharThemeReadings). */
-const OUTWEIGHED_COLOR = "#b08a62";
+const OUTWEIGHED_COLOR = "#999999";
 /** The Agreement & Conflict section's heading, in Nepali. */
 const THEMES_HEADING_NE = "मेल र द्वन्द्व";
 
@@ -121,8 +121,8 @@ function analysisMarkup(
   const rows = planets.map((name) => ({ name, house: allHouses[name], ...gocharAssessment(name, allHouses[name], allHouses) }));
   const named = roomy && nepaliNames !== undefined;
   // Grahas whose readings are outweighed by a heavier graha's on the same
-  // area of life (see gocharThemeReadings) fade to light brown.
-  const { themes, outweighed } = gocharThemeReadings(allHouses);
+  // area of life (see gocharThemeReadings) fade to grey, name and reason.
+  const { outweighed } = gocharThemeReadings(allHouses);
   const rowColor = (row: (typeof rows)[number]) => (outweighed.has(row.name) ? OUTWEIGHED_COLOR : QUALITY_COLORS[row.quality]);
   // Each graha's figure, in a FIGURE_W x FIGURE_H box (shares of the text
   // size), then the Nepali name; the coloured dot stands in without them.
@@ -155,14 +155,14 @@ function analysisMarkup(
   // Largest text size at which every line fits the box's width and height.
   // Starts as large as could fit (much larger in the roomy full-screen view)
   // and shrinks until every line fits.
-  // Named, a graha's heading may break after its name ("3RD · GOOD" on a
-  // line of its own) when that lets the text stay larger.
+  // Named, a heading too wide for one line breaks after the graha's name
+  // ("3RD · GOOD" on a line of its own) rather than shrinking everything.
   let size = roomy ? Math.min(box.w * 0.056 * columns, box.h * 0.1) : Math.min(box.w * 0.055, box.h * 0.04);
   // A reason line: English, led on its first line (given `nepaliReasons`)
   // by the Nepali meaning -- "लाभ / GAIN", or the Nepali alone on a line
   // ending " /" when the two don't fit together.
   type ReasonLine = { ne?: ShapedText; text: string };
-  let layout: { name: string; head: string[]; reason: ReasonLine[]; color: string }[] = [];
+  let layout: { name: string; head: string[]; reason: ReasonLine[]; color: string; reasonColor: string }[] = [];
   let height = 0;
   const lineStep = named ? 1.38 : 1.45;
   // Lines in Nepali step further, past their descenders (the ू of सूर्य).
@@ -180,64 +180,37 @@ function analysisMarkup(
     if (reasonNeWidth(ne, s) + measureVectorText(joined, s * 0.9, reasonStyle) <= width) return [{ ne, text: joined }];
     return [{ ne, text: " /" }, ...wrapped];
   };
-  // Named, the Agreement & Conflict section under the grahas, across the
-  // panel's full width: each area of life two or more grahas speak to, in
-  // the agreeing or winning side's colour, naming only who wins -- e.g.
-  // "धन / WEALTH: SATURN WINS OVER SUN · BAD".
-  type ThemeLine = ReasonLine & { color: string };
-  let themeLayout: ThemeLine[] = [];
-  const themesHeading = " / AGREEMENT & CONFLICT";
-  const themeLines = (s: number): ThemeLine[] => {
-    if (!named || !themes.length) return [];
-    return themes.flatMap((reading) => {
-      const { en, ne: neText } = GOCHAR_THEMES[reading.theme];
-      const names = (list: string[]) => list.map((name) => name.toUpperCase()).join(", ");
-      const statement =
-        reading.kind === "agree"
-          ? `${names(reading.winners)} AGREE · ${reading.quality.toUpperCase()}`
-          : reading.kind === "balanced"
-            ? `${names(reading.winners)} BALANCE OUT`
-            : `${names(reading.winners)} ${reading.winners.length > 1 ? "WIN" : "WINS"} OVER ${names(reading.losers)} · ${reading.quality.toUpperCase()}`;
-      const color = QUALITY_COLORS[reading.quality];
-      const ne = nepaliReasons?.[neText];
-      const label = `${ne ? " / " : ""}${en}: `;
-      const labelWidth = (ne ? reasonNeWidth(ne, s) : 0) + measureVectorText(label, s * 0.9, reasonStyle);
-      if (labelWidth + measureVectorText(statement, s * 0.9, reasonStyle) <= innerW) return [{ ne, text: label + statement, color }];
-      return [{ ne, text: label.trimEnd(), color }, ...wrapVectorText(statement, innerW - s, s * 0.9, reasonStyle).map((text) => ({ text: ` ${text}`, color }))];
-    });
-  };
-  const themesHeight = (lines: ThemeLine[], s: number) =>
-    lines.length ? s * 0.3 + s * headStep + lines.reduce((sum, line) => sum + s * (line.ne ? headStep + REASON_NE_AIR : lineStep), 0) + s * 0.3 : 0;
   // Named rows get a little more air above, for the Devanagari's matras.
   const rowHeight = (row: { head: string[]; reason: ReasonLine[] }, s: number) =>
     s * headStep +
     (row.head.length - 1) * s * lineStep +
     row.reason.reduce((sum, line) => sum + s * (line.ne ? headStep + REASON_NE_AIR : lineStep), 0) +
     s * (named ? 0.7 : 0.45);
-  fitting: for (let attempt = 0; attempt < 40; attempt++) {
+  const headFits = (name: string, line: string, s: number, first: boolean) => (first ? nepaliWidth(name, s) : 0) + measureVectorText(line, s, titleStyle) <= colW - lead(s);
+  for (let attempt = 0; attempt < 60; attempt++) {
     const s = size;
-    for (const split of named ? [false, true] : [false]) {
-      layout = rows.map((row) => {
-        const verdict = `${ordinal(row.house)} · ${row.quality.toUpperCase()}`;
-        return {
-          name: row.name,
-          head: split ? [row.name.toUpperCase(), verdict] : [`${row.name.toUpperCase()} · ${verdict}`],
-          reason: reasonLines(row, s),
-          color: rowColor(row),
-        };
-      });
-      themeLayout = themeLines(s);
-      const tallest = Math.max(...Array.from({ length: columns }, (_, c) => layout.slice(c * perColumn, (c + 1) * perColumn).reduce((sum, row) => sum + rowHeight(row, s), 0)));
-      height = padY * 2 + s * 1.3 * 1.8 + s * 0.85 * 1.7 + tallest + themesHeight(themeLayout, s) + s * 0.8 * 1.6;
-      const widthOk =
-        titleWidth(s * 1.3) <= innerW &&
-        subtitleWidth(s * 0.85) <= innerW &&
-        layout.every((row) => row.head.every((line, k) => (k === 0 ? nepaliWidth(row.name, s) : 0) + measureVectorText(line, s, titleStyle) <= colW - lead(s))) &&
-        layout.every((row) => row.reason.every((line) => !line.ne || reasonNeWidth(line.ne, s) + measureVectorText(line.text, s * 0.9, reasonStyle) <= colW - lead(s))) &&
-        themeLayout.every((line) => (line.ne ? reasonNeWidth(line.ne, s) : 0) + measureVectorText(line.text, s * 0.9, reasonStyle) <= innerW);
-      if (height <= box.h && widthOk) break fitting;
-    }
-    size *= 0.93;
+    layout = rows.map((row) => {
+      const verdict = `${ordinal(row.house)} · ${row.quality.toUpperCase()}`;
+      const whole = `${row.name.toUpperCase()} · ${verdict}`;
+      return {
+        name: row.name,
+        // Only a heading too wide for one line breaks, and only when named.
+        head: !named || headFits(row.name, whole, s, true) ? [whole] : [row.name.toUpperCase(), verdict],
+        reason: reasonLines(row, s),
+        color: rowColor(row),
+        reasonColor: outweighed.has(row.name) ? OUTWEIGHED_COLOR : reasonStyle.color!,
+      };
+    });
+    const tallest = Math.max(...Array.from({ length: columns }, (_, c) => layout.slice(c * perColumn, (c + 1) * perColumn).reduce((sum, row) => sum + rowHeight(row, s), 0)));
+    height = padY * 2 + s * 1.3 * 1.8 + s * 0.85 * 1.7 + tallest + s * 0.8 * 1.6;
+    const widthOk =
+      titleWidth(s * 1.3) <= innerW &&
+      subtitleWidth(s * 0.85) <= innerW &&
+      layout.every((row) => row.head.every((line, k) => headFits(row.name, line, s, k === 0))) &&
+      layout.every((row) => row.reason.every((line) => !line.ne || reasonNeWidth(line.ne, s) + measureVectorText(line.text, s * 0.9, reasonStyle) <= colW - lead(s)));
+    if (height <= box.h && widthOk) break;
+    // Fine steps, so the text ends up as large as the panel allows.
+    size *= 0.97;
   }
 
   const parts = [
@@ -289,42 +262,28 @@ function analysisMarkup(
       if (line.ne) y += size * REASON_NE_AIR;
       if (line.ne) {
         const neSize = size * 0.9 * DEVANAGARI_SCALE;
-        parts.push(devanagariMarkup(line.ne, lineX, y + size * 0.9 - neSize * 0.72, neSize, reasonStyle.color!));
+        parts.push(devanagariMarkup(line.ne, lineX, y + size * 0.9 - neSize * 0.72, neSize, row.reasonColor));
         lineX += reasonNeWidth(line.ne, size);
       }
-      parts.push(buildVectorTextMarkup(line.text, lineX, y, size * 0.9, reasonStyle));
+      parts.push(buildVectorTextMarkup(line.text, lineX, y, size * 0.9, { ...reasonStyle, color: row.reasonColor }));
       y += size * (line.ne ? headStep : lineStep);
     }
     y += size * 0.45;
     bottom = Math.max(bottom, y);
   });
-  if (themeLayout.length) {
-    // A hairline across the panel, then the heading and one line per area.
-    y = bottom + size * 0.3;
-    parts.push(`<line x1="${(box.x + pad).toFixed(1)}" y1="${(y - size * 0.15).toFixed(1)}" x2="${(box.x + box.w - pad).toFixed(1)}" y2="${(y - size * 0.15).toFixed(1)}" stroke="#f7c56a" stroke-opacity="0.35" stroke-width="${Math.max(1, size * 0.05).toFixed(1)}" />`);
-    y += size * 0.25;
-    let headingX = box.x + pad;
-    const headingNe = nepaliReasons?.[THEMES_HEADING_NE];
-    if (headingNe) {
-      parts.push(devanagariMarkup(headingNe, headingX, y + size - size * DEVANAGARI_SCALE * 0.72, size * DEVANAGARI_SCALE, titleStyle.color!));
-      headingX += headingNe.width * size * DEVANAGARI_SCALE;
-    }
-    parts.push(buildVectorTextMarkup(headingNe ? themesHeading : themesHeading.slice(3), headingX, y, size, titleStyle));
-    y += size * headStep - size * 0.25;
-    for (const line of themeLayout) {
-      let lineX = box.x + pad;
-      if (line.ne) {
-        y += size * REASON_NE_AIR;
-        const neSize = size * 0.9 * DEVANAGARI_SCALE;
-        parts.push(devanagariMarkup(line.ne, lineX, y + size * 0.9 - neSize * 0.72, neSize, line.color));
-        lineX += reasonNeWidth(line.ne, size);
-      }
-      parts.push(buildVectorTextMarkup(line.text, lineX, y, size * 0.9, { ...reasonStyle, color: line.color }));
-      y += size * (line.ne ? headStep : lineStep);
-    }
-    bottom = y + size * 0.3;
-  }
   parts.push(buildVectorTextMarkup(footer, box.x + pad, bottom + size * 0.3, size * 0.8, noteStyle));
+  // Named (the full-screen view): the "i" that opens the Agreement &
+  // Conflict details -- the page lays its button over this (see
+  // analysisInfoButton and LuckChartLayer).
+  if (named) {
+    const { cx, cy, r } = analysisInfoButton(box);
+    const stroke = Math.max(1, r * 0.12);
+    parts.push(
+      `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${r.toFixed(1)}" fill="#080b16" stroke="#f7c56a" stroke-width="${stroke.toFixed(1)}" />`,
+      `<circle cx="${cx.toFixed(1)}" cy="${(cy - r * 0.45).toFixed(1)}" r="${(r * 0.13).toFixed(1)}" fill="#f7c56a" />`,
+      `<rect x="${(cx - r * 0.1).toFixed(1)}" y="${(cy - r * 0.2).toFixed(1)}" width="${(r * 0.2).toFixed(1)}" height="${(r * 0.72).toFixed(1)}" rx="${(r * 0.06).toFixed(1)}" fill="#f7c56a" />`
+    );
+  }
   return `<g>${parts.join("")}</g>`;
 }
 
@@ -364,6 +323,42 @@ function qualityLegend(cx: number, top: number, h: number, maxW: number, moved: 
       return markup;
     })
     .join("");
+}
+
+/** The full-screen Analysis panel's "i" circle: in its bottom-right corner. */
+export function analysisInfoButton(box: Box): { cx: number; cy: number; r: number } {
+  const r = Math.max(12, Math.min(box.w, box.h) * 0.045);
+  return { cx: box.x + box.w - r * 1.5, cy: box.y + box.h - r * 1.5, r };
+}
+
+/** What the "i" opens: the Agreement & Conflict details, as plain text for the page to lay out. */
+export interface LuckChartInfo {
+  /** The "i" circle, in the SVG's pixels. */
+  button: { cx: number; cy: number; r: number };
+  title: { ne: string; en: string };
+  /** How a conflict is decided, in one line. */
+  rule: string;
+  /** One per area of life two or more grahas speak to, in the agreeing or winning side's colour. */
+  lines: { ne: string; en: string; text: string; color: string }[];
+}
+
+/**
+ * Each area of life two or more grahas' readings speak to (see
+ * gocharThemeReadings), naming only who wins -- "SATURN WINS OVER SUN ·
+ * BAD" -- or who agrees.
+ */
+function agreementLines(allHouses: Record<string, number>): LuckChartInfo["lines"] {
+  const names = (list: string[]) => list.map((name) => name.toUpperCase()).join(", ");
+  return gocharThemeReadings(allHouses).themes.map((reading) => ({
+    ...GOCHAR_THEMES[reading.theme],
+    text:
+      reading.kind === "agree"
+        ? `${names(reading.winners)} AGREE · ${reading.quality.toUpperCase()}`
+        : reading.kind === "balanced"
+          ? `${names(reading.winners)} BALANCE OUT`
+          : `${names(reading.winners)} ${reading.winners.length > 1 ? "WIN" : "WINS"} OVER ${names(reading.losers)} · ${reading.quality.toUpperCase()}`,
+    color: QUALITY_COLORS[reading.quality],
+  }));
 }
 
 // Server-only: the Panchang text here is HarfBuzz-shaped (devanagariShaper.ts
@@ -498,9 +493,16 @@ export function buildGocharMarkup(
  * gochar block and Analysis panel the wallpaper draws, laid out to fill a
  * `width`x`height` screen on a plain dark background (see
  * layoutLuckChartView). Vector-only, like the wallpaper, so it stays sharp
- * at any size.
+ * at any size. Also returns what its Analysis panel's "i" opens (null
+ * without a natal Moon sign, when there's no Analysis).
  */
-export async function buildLuckChartViewSvg(width: number, height: number, kundli: KundliData, onDate: string, panchang: DailyReading["panchang"]): Promise<string> {
+export async function buildLuckChartViewSvg(
+  width: number,
+  height: number,
+  kundli: KundliData,
+  onDate: string,
+  panchang: DailyReading["panchang"]
+): Promise<{ svg: string; info: LuckChartInfo | null }> {
   const shapeAll = (texts: [string, string][]) => Promise.all(texts.map(async ([key, text]) => [key, await shapeDevanagariText(text)] as const));
   const moonSign = kundli.planets.find((planet) => planet.name === "Moon")?.sign;
   const moonSignName = moonSign !== undefined ? SIGN_NAMES_NE[moonSign] : undefined;
@@ -508,7 +510,7 @@ export async function buildLuckChartViewSvg(width: number, height: number, kundl
     layoutLuckChartView(width, height, panchang),
     shapeAll(Object.entries(NEPALI_NAMES)),
     shapeDevanagariText("विष्लेषण"),
-    shapeAll([...nepaliReasonTexts(), THEMES_HEADING_NE].map((text) => [text, text])),
+    shapeAll(nepaliReasonTexts().map((text) => [text, text])),
     moonSignName ? shapeDevanagariText(moonSignName) : undefined,
   ]);
   const markup = buildGocharMarkup(layout, kundli, onDate, {
@@ -518,5 +520,20 @@ export async function buildLuckChartViewSvg(width: number, height: number, kundl
     nepaliReasons: Object.fromEntries(reasons),
     moonSignNe,
   });
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="${width}" height="${height}" fill="#05070f" />${markup}</svg>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="${width}" height="${height}" fill="#05070f" />${markup}</svg>`;
+  if (!layout.analysis || moonSign === undefined) return { svg, info: null };
+
+  // Today's house from the natal Moon for each graha, as buildGocharMarkup judges them.
+  const [year, month, day] = onDate.split("-").map(Number);
+  const today = gocharKundli(kundli, new Date(Date.UTC(year, month - 1, day, 12)));
+  const allHouses = Object.fromEntries(today.planets.map((planet) => [planet.name, ((planet.sign - moonSign + 12) % 12) + 1]));
+  return {
+    svg,
+    info: {
+      button: analysisInfoButton(layout.analysis),
+      title: { ne: THEMES_HEADING_NE, en: "AGREEMENT & CONFLICT" },
+      rule: "WHERE GRAHAS DISAGREE, THE SLOWER ONE WINS: SATURN 5 · RAHU, KETU, JUPITER 4 · MARS 3 · SUN, VENUS, MERCURY 2 · MOON 1 (NEUTRAL READINGS COUNT HALF; VEDHA-BLOCKED ONES DON'T COUNT).",
+      lines: agreementLines(allHouses),
+    },
+  };
 }

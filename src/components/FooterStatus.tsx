@@ -2,15 +2,10 @@
 
 import { useLastRefreshed } from "@/lib/client/refreshStatus";
 import { formatRefreshedAt } from "@/lib/client/formatRefreshedAt";
-import { APP_VERSION } from "@/lib/version";
 
-/** "Last refreshed: Wed 14:05 · Version 6.1" -- small, on the footer's next line. */
+/** "Last refreshed: Wed 14:05" -- small, on the footer's next line. (The app version is in the header, see NavBar.) */
 export function FooterStatus() {
   const refreshedAt = useLastRefreshed();
-  return (
-    <span className="footer-status">
-      {refreshedAt && <>Last refreshed: {formatRefreshedAt(refreshedAt)} · </>}
-      Version {APP_VERSION}
-    </span>
-  );
+  if (!refreshedAt) return null;
+  return <span className="footer-status">Last refreshed: {formatRefreshedAt(refreshedAt)}</span>;
 }

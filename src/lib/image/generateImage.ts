@@ -5,13 +5,14 @@ import { buildImagePrompt } from "./prompt";
 import { generateMockHoroscopeImageSvg } from "./mockImage";
 import { DailyReading } from "@/lib/dailyReading";
 import { generateOpenverseImage } from "./openverseImage";
+import { dailyScenes } from "./dailyIntent";
 import { readingTags, withWallpaperOverlay, TargetCanvas } from "./compositeOverlay";
 import { getSchumannSnapshot } from "@/lib/schumann";
 import type { SchumannView } from "./schumannOverlay";
 import { createHash } from "node:crypto";
 import type { LuckChartBoxes } from "@/types/models";
 
-const IMAGE_GENERATOR_VERSION = "daily-image-v33";
+const IMAGE_GENERATOR_VERSION = "daily-image-v34";
 
 // Source images (a random-aspect-ratio Openverse photo, OpenAI's fixed
 // portrait size, or the mock SVG's native 4:5) rarely match either wallpaper
@@ -67,7 +68,7 @@ interface RenderedUrls {
 
 export interface GeneratedImage extends RenderedUrls {
   prompt: string;
-  provider: "openai" | "openverse" | "mock";
+  provider: "openai" | "pexels" | "openverse" | "mock";
   source: WallpaperSource;
   /** UTC hour of the Schumann data drawn on it (see schumann.ts). */
   schumannHour: string;
@@ -164,7 +165,9 @@ export async function generateHoroscopeImage(params: {
 }): Promise<GeneratedImage> {
   const { stableSeed, astrology, style, luckyTheme, emotionalTheme, randomizeArt } = params;
   const assetId = createHash("sha256").update(stableSeed).digest("hex").slice(0, 24);
-  const prompt = buildImagePrompt(astrology, { style, luckyTheme, emotionalTheme });
+  // The day's leading scene (see dailyScenes), for an image generator to paint.
+  const scene = dailyScenes(params.reading.intent, parseInt(assetId.slice(0, 8), 16))[0].describe;
+  const prompt = buildImagePrompt(astrology, { style, luckyTheme, emotionalTheme, scene });
   const provider = process.env.IMAGE_PROVIDER === "openai" && process.env.OPENAI_API_KEY ? "openai" : "openverse";
   const snapshot = await getSchumannSnapshot();
   const ctx: OverlayContext = { ...params, assetId, schumann: { snapshot, timeZone: params.timeZone, now: new Date() } };
@@ -177,6 +180,23 @@ export async function generateHoroscopeImage(params: {
       return { ...urls, prompt, provider, source, schumannHour: snapshot.hour };
     } catch (err) {
       console.error("[image] openai generation failed, falling back to mock:", err);
+    }
+  }
+
+  // Pexels' curated photos first, when there's a key: much better looking
+  // and better described than Openverse's, so far likelier to show the day.
+  const pexelsKey = process.env.PEXELS_API_KEY;
+  if (pexelsKey) {
+    try {
+      const { generatePexelsImage } = await import("./pexelsImage");
+      const result = await generatePexelsImage({ apiKey: pexelsKey, stableSeed, intent: params.reading.intent, randomize: randomizeArt });
+      const [urls, source] = await Promise.all([
+        renderRaster(result.buffer, result.contentType, result.extension, ctx),
+        saveSource(assetId, result.buffer, result.contentType, result.extension),
+      ]);
+      return { ...urls, prompt: result.prompt, provider: "pexels", source, schumannHour: snapshot.hour };
+    } catch (err) {
+      console.error("[image] Pexels failed, falling back to Openverse:", err);
     }
   }
 

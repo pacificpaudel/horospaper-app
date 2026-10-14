@@ -177,9 +177,9 @@ export function gocharKundli(natal: KundliData, at: Date): KundliData {
  * shows this when freeastrologyapi.com's own chart image isn't available
  * (it lists the Mahadasha in its own text, so no header here).
  */
-export function buildKundliSvg(kundli: KundliData, size = 400): string {
+export function buildKundliSvg(kundli: KundliData, size = 400, moonIllumination = 0.5): string {
   const pad = Math.ceil(size * 0.01);
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="${-pad} ${-pad} ${size + pad * 2} ${size + pad * 2}">${kundliChartMarkup(0, 0, size, kundli, null)}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="${-pad} ${-pad} ${size + pad * 2} ${size + pad * 2}">${kundliChartMarkup(0, 0, size, kundli, null, undefined, undefined, undefined, undefined, undefined, false, moonIllumination, true)}</svg>`;
 }
 
 interface Label {
@@ -443,7 +443,9 @@ export function kundliChartMarkup(
    */
   zoom = false,
   /** Zoomed: the Moon's lit share today, for its figure's phase. */
-  moonIllumination = 0.5
+  moonIllumination = 0.5,
+  /** Each graha's figure before its name (always, zoomed): the birth chart in the form draws them too. */
+  figures = zoom
 ): string {
   const P = (fx: number, fy: number) => `${(x0 + fx * size).toFixed(1)} ${(y0 + fy * size).toFixed(1)}`;
 
@@ -511,6 +513,11 @@ export function kundliChartMarkup(
   const centers = new Map<string, [number, number]>();
   // Numbers each graha figure's gradient ids, unique in the document.
   let iconCount = 0;
+  // Zoomed pies stand a little taller than the text, so lines get more air.
+  const lineStep = zoom ? 1.8 : 1.08;
+  // The birth chart with figures fits each house's labels inside it (see
+  // placeLabels); the Luck Chart keeps its own, already-tuned layout.
+  const fitHouses = figures && !luck;
   const labels = byHouse
     .map((entries, i) => {
       const fill = fills[i];
@@ -536,51 +543,109 @@ export function kundliChartMarkup(
    * (within ICON_MIN..ICON_MAX of the font size) -- the house's width
    * there, or just one half's in a left/right split house.
    */
-  function withIcons(rowEntries: Label[], i: number, fx: number, y: number, half: { at: number; side: number } | null): Label[] {
+  function withIcons(rowEntries: Label[], i: number, fx: number, y: number, half: { at: number; side: number } | null, fs = fontSize): Label[] {
     const planets = rowEntries.filter((entry) => entry.planet && !entry.struck && planetBodyFor(entry.planet));
-    if (!zoom || !planets.length) return rowEntries;
+    if (!figures || !planets.length) return rowEntries;
     let [lo, hi] = spanAt(HOUSE_POLYGONS[i], 1, (y - y0) / size);
     if (half) [lo, hi] = half.side === 0 ? [lo, Math.min(hi, half.at)] : [Math.max(lo, half.at), hi];
-    const room = Number.isFinite(lo) && Number.isFinite(hi) ? Math.max(0, 2 * Math.min(fx - lo, hi - fx) * size * 0.85) : Infinity;
-    const rest = rowEntries.reduce((sum, entry) => sum + labelWidth(entry, fontSize, zoom), 0) + fontSize * 0.45 * (rowEntries.length - 1) + planets.length * fontSize * ICON_GAP;
+    // Fitted rows are re-centered in the house's span, so they get all of it.
+    const room = !Number.isFinite(lo) || !Number.isFinite(hi) ? Infinity : fitHouses ? (hi - lo) * size * 0.85 : Math.max(0, 2 * Math.min(fx - lo, hi - fx) * size * 0.85);
+    const rest = rowEntries.reduce((sum, entry) => sum + labelWidth(entry, fs, zoom), 0) + fs * 0.45 * (rowEntries.length - 1) + planets.length * fs * ICON_GAP;
     const perHeight = planets.reduce((sum, entry) => sum + iconAspect(entry.planet!), 0);
-    const icon = Math.min(fontSize * ICON_MAX, Math.max(fontSize * ICON_MIN, (room - rest) / perHeight));
+    // Never taller than a line, so stacked labels' figures don't touch.
+    const icon = Math.min(fs * Math.min(ICON_MAX, lineStep * 0.92), Math.max(fs * ICON_MIN, (room - rest) / perHeight));
     return rowEntries.map((entry) => (planets.includes(entry) ? { ...entry, icon } : entry));
+  }
+
+  /** House i's own house icon and sign-number circle, as squares (center, half-side) in px, for labels to keep clear of. */
+  function houseBlockers(i: number): { cx: number; cy: number; half: number }[] {
+    const [ix, iy] = iconAt(i);
+    const [sx, sy] = signAt(i);
+    return [
+      { cx: x0 + ix * size, cy: y0 + iy * size, half: (size * ICON_H * scale) / 2 },
+      { cx: x0 + sx * size, cy: y0 + sy * size, half: size * 0.03 * scale },
+    ];
+  }
+
+  /**
+   * Rows of `entries` stacked on (fx, fy) in house i at font size fs:
+   * each row's top, its labels (with figures) and their widths, and its
+   * center x. Fitted (the birth chart), the stack is kept inside the
+   * house's height at fx and each row is centered in the house's width at
+   * its own height -- the triangles narrow fast toward their tips.
+   */
+  function rowLayout(entries: Label[], i: number, [fx, fy]: [number, number], perRow: number, half: { at: number; side: number } | null, fs: number) {
+    const lineHeight = fs * lineStep;
+    // Never above the house's own icon when that sits over the labels.
+    const iconFy = iconAt(i)[1];
+    const belowIcon = iconFy < fy ? y0 + (iconFy + (ICON_H * scale) / 2 + 0.008) * size : -Infinity;
+    const rows: Label[][] = [];
+    for (let k = 0; k < entries.length; k += perRow) rows.push(entries.slice(k, k + perRow));
+    let top = Math.max(y0 + fy * size - (rows.length * lineHeight) / 2 + fs * 0.05, belowIcon);
+    const [ylo, yhi] = spanAt(HOUSE_POLYGONS[i], 0, fx);
+    if (fitHouses) top = Math.max(y0 + ylo * size + fs * 0.3, Math.min(top, y0 + yhi * size - rows.length * lineHeight - fs * 0.1));
+    return rows.map((plainEntries, row) => {
+      const y = top + row * lineHeight;
+      const labels = withIcons(plainEntries, i, fx, y + fs * 0.42, half, fs);
+      const widths = labels.map((entry) => labelWidth(entry, fs, zoom));
+      const width = widths.reduce((sum, w) => sum + w, 0) + fs * 0.45 * (widths.length - 1);
+      // The house's width over the row's whole height (narrower end wins).
+      const spans = [y, y + fs * 0.95].map((at) => spanAt(HOUSE_POLYGONS[i], 1, (at - y0) / size));
+      const lo = Math.max(...spans.map(([l]) => l));
+      const hi = Math.min(...spans.map(([, h]) => h));
+      let cx = x0 + fx * size;
+      let room = Number.isFinite(lo) && Number.isFinite(hi) ? (hi - lo) * size - fs * 0.3 : Infinity;
+      if (fitHouses && Number.isFinite(lo) && Number.isFinite(hi)) {
+        // The widest stretch of the row left clear of the house's own icon
+        // and sign-number circle, wherever they reach into it.
+        let free: [number, number][] = [[x0 + lo * size + fs * 0.15, x0 + hi * size - fs * 0.15]];
+        for (const b of houseBlockers(i)) {
+          if (b.cy + b.half <= y - fs * 0.15 || b.cy - b.half >= y + fs * 1.05) continue;
+          const [bl, br] = [b.cx - b.half - fs * 0.3, b.cx + b.half + fs * 0.3];
+          free = free.flatMap(([l, r]): [number, number][] => (br <= l || bl >= r ? [[l, r]] : [...(bl > l ? [[l, bl] as [number, number]] : []), ...(br < r ? [[br, r] as [number, number]] : [])]));
+        }
+        const [left, right] = free.reduce((best, span) => (span[1] - span[0] > best[1] - best[0] ? span : best), [0, 0] as [number, number]);
+        room = right - left;
+        cx = width > room ? (left + right) / 2 : Math.min(Math.max(cx, left + width / 2), right - width / 2);
+      }
+      return { y, labels, widths, width, cx, room, top, bottom: y + lineHeight };
+    });
   }
 
   /**
    * Stacks `entries` centered on (fx, fy) in house i, `perRow` to a row --
    * the wide, shallow triangles (houses 2, 6, 8, 12) set two side by side;
-   * the others, and each half of a split house, one per line.
+   * the others, and each half of a split house, one per line. Fitted (the
+   * birth chart), a crowded house shrinks its labels and figures until
+   * every row fits inside it.
    */
-  function placeLabels(entries: Label[], i: number, [fx, fy]: [number, number], perRow: number, half: { at: number; side: number } | null): string {
-      // Zoomed pies stand a little taller than the text, so lines get more air.
-      const lineHeight = fontSize * (zoom ? 1.8 : 1.08);
-      // Never above the house's own icon when that sits over the labels.
-      const iconFy = iconAt(i)[1];
-      const belowIcon = iconFy < fy ? y0 + (iconFy + (ICON_H * scale) / 2 + 0.008) * size : -Infinity;
-      const rows: Label[][] = [];
-      for (let k = 0; k < entries.length; k += perRow) rows.push(entries.slice(k, k + perRow));
-      const top = Math.max(y0 + fy * size - (rows.length * lineHeight) / 2 + fontSize * 0.05, belowIcon);
-      return rows
-        .map((plainEntries, row) => {
-          const y = top + row * lineHeight;
-          const rowEntries = withIcons(plainEntries, i, fx, y + fontSize * 0.42, half);
-          const widths = rowEntries.map((entry) => labelWidth(entry, fontSize, zoom));
-          const gap = fontSize * 0.45;
-          let x = x0 + fx * size - (widths.reduce((sum, w) => sum + w, 0) + gap * (widths.length - 1)) / 2;
-          return rowEntries
-            .map((entry, k) => {
-              const cx = x + widths[k] / 2;
-              x += widths[k] + gap;
-              // The name's own center (not its figure's or pie's), for the move arrow and ring.
-              const nameCx = cx + (iconWidth(entry, fontSize) - stayWidth(entry, fontSize, zoom)) / 2;
-              if (entry.planet) centers.set(`${entry.planet}:${entry.struck ? "was" : "now"}`, [nameCx, y + fontSize * 0.45]);
-              return devanagariLabelMarkup(entry, cx, y, fontSize, zoom, `luck-body-${Math.round(x0)}-${iconCount++}`, moonIllumination);
-            })
-            .join("");
-        })
-        .join("");
+  function placeLabels(entries: Label[], i: number, anchor: [number, number], perRow: number, half: { at: number; side: number } | null): string {
+    let fs = fontSize;
+    let rows = rowLayout(entries, i, anchor, perRow, half, fs);
+    if (fitHouses) {
+      const [ylo, yhi] = spanAt(HOUSE_POLYGONS[i], 0, anchor[0]);
+      const fits = () =>
+        rows.every((row) => row.width <= row.room) && (!rows.length || rows[rows.length - 1].bottom <= y0 + yhi * size + fs * 0.05) && (!rows.length || rows[0].top >= y0 + ylo * size);
+      for (let attempt = 0; attempt < 14 && !fits(); attempt++) {
+        fs *= 0.92;
+        rows = rowLayout(entries, i, anchor, perRow, half, fs);
+      }
+    }
+    return rows
+      .map(({ y, labels, widths, width, cx: rowCx }) => {
+        let x = rowCx - width / 2;
+        return labels
+          .map((entry, k) => {
+            const cx = x + widths[k] / 2;
+            x += widths[k] + fs * 0.45;
+            // The name's own center (not its figure's or pie's), for the move arrow and ring.
+            const nameCx = cx + (iconWidth(entry, fs) - stayWidth(entry, fs, zoom)) / 2;
+            if (entry.planet) centers.set(`${entry.planet}:${entry.struck ? "was" : "now"}`, [nameCx, y + fs * 0.45]);
+            return devanagariLabelMarkup(entry, cx, y, fs, zoom, `luck-body-${Math.round(x0)}-${iconCount++}`, moonIllumination);
+          })
+          .join("");
+      })
+      .join("");
   }
 
   // A dashed line from where each moved graha last was to where it
