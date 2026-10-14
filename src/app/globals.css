@@ -88,6 +88,9 @@ body {
 .primary-button:hover { filter: brightness(1.08); transform: translateY(-1px); }
 .primary-button:disabled { cursor: not-allowed; opacity: 0.55; }
 .download-button { display: inline-flex; align-items: center; gap: 0.5rem; border: 1px solid var(--border); border-radius: 999px; padding: 0.55rem 0.85rem; color: var(--foreground); font-size: 0.78rem; transition: border-color 150ms ease, background 150ms ease; }
+/* The header's "Desktop Version" / "Mobile Version" switch, styled like the Download button. */
+.view-switch { display: inline-flex; align-items: center; gap: 0.45rem; border: 1px solid var(--border); border-radius: 999px; padding: 0.55rem 0.85rem; color: var(--foreground); font-size: 0.78rem; white-space: nowrap; cursor: pointer; transition: border-color 150ms ease, background 150ms ease; }
+.view-switch:hover, .view-switch:focus-visible { border-color: var(--accent); background: rgba(242, 166, 90, 0.1); outline: none; }
 .download-button:hover { border-color: var(--accent); background: rgba(242, 166, 90, 0.1); }
 .home-main { min-height: 0; gap: 0.25rem; }
 .crystal-scene { width: 100%; max-width: 1100px; height: clamp(180px, 38vh, 360px); margin: auto; overflow: hidden; background: transparent; }
@@ -128,11 +131,14 @@ body {
 /* The app version beside the name in the header: a small gold pill, in the
    sans face with even-width digits so "v6.10" reads cleanly. */
 .app-version { display: inline-flex; align-items: center; padding: 0.2rem 0.6rem; border: 1px solid rgba(247, 197, 106, 0.45); border-radius: 999px; background: rgba(247, 197, 106, 0.08); color: var(--gold); font-family: var(--font-sans), system-ui, sans-serif; font-size: 0.75rem; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: 0.06em; line-height: 1.2; white-space: nowrap; }
-/* The clickable Luck Chart (LuckChartLayer): an invisible button exactly over
-   the chart baked into the wallpaper, and the full-screen view it opens. */
+/* The Luck Chart (LuckChartLayer): the "Luck Chart" button and the clickable
+   luck percentage over the wallpaper, and the full-screen view they open. */
 .luck-chart-layer { position: absolute; inset: 0; pointer-events: none; }
-.luck-chart-hotspot { position: absolute; pointer-events: auto; cursor: zoom-in; border-radius: 0.5rem; background: transparent; outline: 2px solid transparent; transition: outline-color 150ms ease, background 150ms ease; }
-.luck-chart-hotspot:hover, .luck-chart-hotspot:focus-visible { outline-color: rgba(247, 197, 106, 0.6); background: rgba(247, 197, 106, 0.06); }
+/* The "Luck Chart" button, just above the luck percentage: opens the same full-screen view. */
+.luck-chart-button { position: absolute; transform: translate(-50%, -100%); pointer-events: auto; display: inline-flex; align-items: center; gap: 0.4rem; padding: clamp(0.25rem, 0.8vmin, 0.45rem) clamp(0.7rem, 2vmin, 1rem); border: 1px solid rgba(247, 197, 106, 0.6); border-radius: 999px; background: rgba(11, 18, 32, 0.85); color: var(--gold); font-family: var(--font-sans), system-ui, sans-serif; font-size: clamp(0.72rem, 1.8vmin, 0.85rem); font-weight: 600; letter-spacing: 0.04em; white-space: nowrap; cursor: pointer; backdrop-filter: blur(6px); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); transition: background 150ms ease, transform 150ms ease; }
+.luck-chart-button:hover, .luck-chart-button:focus-visible { background: rgba(48, 40, 24, 0.92); outline: none; }
+.luck-chart-meter-hotspot { position: absolute; pointer-events: auto; cursor: zoom-in; border: 0; border-radius: 0.5rem; background: transparent; }
+.luck-chart-meter-hotspot:hover, .luck-chart-meter-hotspot:focus-visible { background: rgba(247, 197, 106, 0.06); outline: 2px solid rgba(247, 197, 106, 0.6); }
 .luck-chart-view { position: fixed; inset: 0; z-index: 200; display: flex; align-items: center; justify-content: center; background: #05070f; cursor: zoom-out; pointer-events: auto; }
 .luck-chart-view-image { position: relative; width: 100%; height: 100%; object-fit: contain; }
 .luck-chart-view-error { color: var(--foreground); font-size: 0.9rem; }

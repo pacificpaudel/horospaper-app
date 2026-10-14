@@ -10,11 +10,16 @@ export function NavBar({
   downloadUrl,
   onLogoClick,
   fullscreenTarget,
+  view,
+  onViewChange,
 }: {
   downloadUrl?: string | null;
   onLogoClick?: () => void;
   /** The wallpaper container to take fullscreen; the button only shows when given. */
   fullscreenTarget?: RefObject<HTMLElement | null>;
+  /** The wallpaper view being shown; with onViewChange, a button switches to the other one. */
+  view?: "MOBILE" | "DESKTOP";
+  onViewChange?: (view: "MOBILE" | "DESKTOP") => void;
 }) {
   return (
     <header className="sticky top-0 z-40 border-b border-border/70 bg-background/80 backdrop-blur-xl">
@@ -29,6 +34,17 @@ export function NavBar({
         </div>
         {downloadUrl ? (
           <div className="flex items-center gap-2">
+            {view && onViewChange && (
+              <button
+                type="button"
+                className="view-switch"
+                onClick={() => onViewChange(view === "MOBILE" ? "DESKTOP" : "MOBILE")}
+                aria-label={view === "MOBILE" ? "Switch to the Desktop (16:9) wallpaper" : "Switch to the Mobile (9:16) wallpaper"}
+              >
+                <span aria-hidden="true">{view === "MOBILE" ? "▭" : "▯"}</span>
+                {view === "MOBILE" ? "Desktop Version" : "Mobile Version"}
+              </button>
+            )}
             {fullscreenTarget && <FullscreenButton target={fullscreenTarget} />}
             <DownloadButton href={downloadUrl} />
           </div>

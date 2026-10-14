@@ -4,8 +4,7 @@ import { buildLuckMeterMarkup } from "./luckMeterOverlay";
 import { buildDateHeader, shapeNepaliWeekday } from "./dateHeaderOverlay";
 import { buildGaugeMarkup, buildGraphBackdropMarkup, SchumannView } from "./schumannOverlay";
 import { buildGalaxyMarkup } from "./galaxyOverlay";
-import { buildGocharMarkup } from "./gocharOverlay";
-import { GocharLayout, layoutWallpaper } from "./wallpaperLayout";
+import { layoutWallpaper } from "./wallpaperLayout";
 import type { LuckChartBox } from "@/types/models";
 import { isZodiacSign, ZODIAC_COLORS, zodiacIconMarkup, ZodiacSign } from "./zodiacIcons";
 import { buildCenteredVectorTextMarkup, TextStyle } from "./vectorFont";
@@ -33,7 +32,8 @@ export interface TargetCanvas {
  * <svg> wrapper): galaxy, the 4 corner planet diagrams and their names,
  * the date header (with the live Schumann graph as its backdrop) and its tags,
  * the Schumann gauge, the
- * gochar block (with the day's Panchang), and the luck meter. Shared by
+ * and the luck meter. (The Luck Chart itself is opened from the page's
+ * "Luck Chart" button, full screen -- not drawn on the wallpaper.) Shared by
  * the photo composite below and the local SVG artwork (mockImage.ts), so
  * the two can never lay things out differently.
  */
@@ -41,14 +41,6 @@ export async function buildOverlayLayers(params: OverlayParams): Promise<string>
   return (await buildOverlay(params)).markup;
 }
 
-/** The gochar block's bounds -- caption, chart and Analysis panel -- for a click target. */
-function luckChartBoxOf(gochar: GocharLayout, width: number, height: number): LuckChartBox {
-  const right = Math.max(gochar.x0 + gochar.size, gochar.caption.x + gochar.caption.w, gochar.analysis ? gochar.analysis.x + gochar.analysis.w : 0);
-  const left = Math.min(gochar.x0, gochar.caption.x);
-  const top = Math.min(gochar.caption.y, gochar.analysis?.y ?? Infinity);
-  const bottom = Math.max(gochar.y0 + gochar.size, gochar.analysis ? gochar.analysis.y + gochar.analysis.h : 0);
-  return { x: Math.round(left), y: Math.round(top), w: Math.round(right - left), h: Math.round(bottom - top), canvasW: width, canvasH: height };
-}
 
 type OverlayParams = Parameters<typeof buildOverlay>[0];
 
@@ -67,7 +59,7 @@ export async function buildOverlay(params: {
   flush?: boolean;
   schumann?: SchumannView | null;
 }): Promise<{ markup: string; luckChartBox: LuckChartBox | null }> {
-  const { width, height, astrology, tags, kundli, schumann } = params;
+  const { width, height, astrology, tags, schumann } = params;
   const flush = Boolean(params.flush);
   const date = astrology.generationDate;
   const gap = Math.round(Math.min(width, height) * 0.015);
@@ -130,7 +122,8 @@ export async function buildOverlay(params: {
       headerBottom,
       headerRight: header.right,
       flush,
-      hasKundli: Boolean(kundli),
+      // The Luck Chart opens full screen from the page instead.
+      hasKundli: false,
       panchang: params.panchang,
       // Already drawn beside the date panel when there's room there.
       score: besideDate ? null : score,
@@ -144,10 +137,9 @@ export async function buildOverlay(params: {
     header.markup,
     zodiacMarkup,
     sideGauge || (layout.gauge && score != null ? buildGaugeMarkup(layout.gauge.cx, layout.gauge.cy, layout.gauge.d, score) : ""),
-    layout.gochar && kundli ? buildGocharMarkup(layout.gochar, kundli, date) : "",
     buildLuckMeterMarkup(width, height, params.luckScore),
   ].join("");
-  return { markup, luckChartBox: layout.gochar && kundli ? luckChartBoxOf(layout.gochar, width, height) : null };
+  return { markup, luckChartBox: null };
 }
 
 /**

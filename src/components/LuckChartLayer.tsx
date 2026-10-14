@@ -2,27 +2,32 @@
 
 import { useEffect, useRef, useState } from "react";
 import { getStoredGuestId } from "@/lib/client/guest";
-import type { LuckChartBox } from "@/types/api";
 import type { LuckChartInfo } from "@/lib/image/gocharOverlay";
 import { KeepAwake } from "./KeepAwake";
+import { luckMeterPanel } from "@/lib/image/luckMeterGeometry";
 
 /**
- * Makes the Luck Chart baked into a wallpaper image clickable: an invisible
- * button laid exactly over it (the image is shown with object-fit: contain
- * inside the same box as this layer), which opens LuckChartView -- just the
- * Luck Chart and its Analysis, drawn fresh to fill the whole screen.
- * Whether it's open is owned by the page, so the zoomed view survives the
+ * The "Luck Chart" button over a wallpaper image: centered just above the
+ * luck percentage drawn near its bottom (never covering it), with the
+ * percentage panel itself clickable too. Either opens LuckChartView -- the
+ * Luck Chart and its Analysis, drawn fresh to fill the whole screen. The
+ * image is shown with object-fit: contain inside the same box as this
+ * layer, so `canvas` (the image's own size) is enough to place them.
+ * Whether the view is open is owned by the page, so it survives the
  * wallpaper being swapped (and this layer remounted) at a new day and just
  * redraws for the new date.
  */
 export function LuckChartLayer({
-  box,
+  canvas,
+  hasChart,
   date,
   isPreview,
   open,
   onOpenChange,
 }: {
-  box: LuckChartBox | null | undefined;
+  canvas: { w: number; h: number };
+  /** Whether the day has a Luck Chart to show (its reading has a kundli). */
+  hasChart: boolean;
   date: string;
   isPreview: boolean;
   open: boolean;
@@ -41,30 +46,32 @@ export function LuckChartLayer({
     return () => observer.disconnect();
   }, []);
 
-  let hotspot: React.CSSProperties | null = null;
-  if (box && size && size.w > 0 && size.h > 0) {
+  let button: React.CSSProperties | null = null;
+  let meter: React.CSSProperties | null = null;
+  if (hasChart && size && size.w > 0 && size.h > 0) {
     // Where object-fit: contain puts the image inside this layer's box.
-    const scale = Math.min(size.w / box.canvasW, size.h / box.canvasH);
-    const offsetX = (size.w - box.canvasW * scale) / 2;
-    const offsetY = (size.h - box.canvasH * scale) / 2;
-    hotspot = { left: offsetX + box.x * scale, top: offsetY + box.y * scale, width: box.w * scale, height: box.h * scale };
+    const scale = Math.min(size.w / canvas.w, size.h / canvas.h);
+    const offsetX = (size.w - canvas.w * scale) / 2;
+    const offsetY = (size.h - canvas.h * scale) / 2;
+    const panel = luckMeterPanel(canvas.w, canvas.h);
+    // Resting just above the percentage panel, clear of it.
+    button = { left: offsetX + (canvas.w / 2) * scale, top: offsetY + panel.y * scale - 6 };
+    meter = { left: offsetX + panel.x * scale, top: offsetY + panel.y * scale, width: panel.w * scale, height: panel.h * scale };
   }
+
+  const openChart = (e: React.MouseEvent) => {
+    // Frame mode exits on any click that reaches its own container.
+    e.stopPropagation();
+    onOpenChange(true);
+  };
 
   return (
     <div ref={layerRef} className="luck-chart-layer">
-      {hotspot && (
-        <button
-          type="button"
-          className="luck-chart-hotspot"
-          style={hotspot}
-          aria-label="Open the Luck Chart full screen"
-          title="Open the Luck Chart full screen"
-          onClick={(e) => {
-            // Frame mode exits on any click that reaches its own container.
-            e.stopPropagation();
-            onOpenChange(true);
-          }}
-        />
+      {meter && <button type="button" className="luck-chart-meter-hotspot" style={meter} aria-label="Open the Luck Chart full screen" onClick={openChart} />}
+      {button && (
+        <button type="button" className="luck-chart-button" style={button} onClick={openChart}>
+          <span aria-hidden="true">✦</span> Luck Chart
+        </button>
       )}
       {open && <LuckChartView date={date} isPreview={isPreview} onClose={() => onOpenChange(false)} />}
     </div>

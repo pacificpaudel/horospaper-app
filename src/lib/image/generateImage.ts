@@ -21,6 +21,7 @@ const IMAGE_GENERATOR_VERSION = "daily-image-v34";
 // the untouched source -- so they always land exactly at the 4 edges of the
 // image that actually gets shown, with no further cropping happening after
 // the fact (in CSS or in an OS's "set as wallpaper" crop).
+// The Mobile view (the default): 9:16, with the 4 planet diagrams in its corners.
 const MOBILE_TARGET: TargetCanvas = { width: 1080, height: 1920 };
 // Frame mode targets an always-on device mounted like a vertical tablet
 // (a 16:9 panel turned portrait, i.e. 9:16) -- same shape as MOBILE_TARGET,
@@ -30,23 +31,8 @@ const MOBILE_TARGET: TargetCanvas = { width: 1080, height: 1920 };
 // never downloaded to risk being cover-cropped by a native OS wallpaper
 // setter the way the mobile-download variant can be.
 const FRAME_TARGET: TargetCanvas = { width: 1080, height: 1920 };
-const DESKTOP_HEIGHT = 1080;
-const DESKTOP_FALLBACK_RATIO = 16 / 9;
-const DESKTOP_MIN_RATIO = 1.1;
-const DESKTOP_MAX_RATIO = 3.2;
-
-/**
- * The desktop canvas's width/height ratio is picked to match the caller's
- * actual on-screen viewport (minus header/footer chrome) at generation
- * time, so the displayed frame needs no letterboxing or further cropping --
- * it's simply shown at this exact ratio. Falls back to 16:9 when the caller
- * didn't report one (e.g. the frame-mode daily auto-refresh).
- */
-function desktopTargetFor(ratio?: number): TargetCanvas {
-  const safeRatio = ratio && Number.isFinite(ratio) ? ratio : DESKTOP_FALLBACK_RATIO;
-  const clamped = Math.min(DESKTOP_MAX_RATIO, Math.max(DESKTOP_MIN_RATIO, safeRatio));
-  return { width: Math.round(DESKTOP_HEIGHT * clamped), height: DESKTOP_HEIGHT };
-}
+// The Desktop view: always 16:9, like a monitor -- the page shows it letterboxed if its window is shaped otherwise.
+const DESKTOP_TARGET: TargetCanvas = { width: 1920, height: 1080 };
 
 /**
  * What the wallpaper's overlays are drawn on top of, kept with the
@@ -93,8 +79,8 @@ const fileStem = (ctx: OverlayContext) => `${ctx.assetId}-${IMAGE_GENERATOR_VERS
 async function renderRaster(buffer: Buffer, contentType: string, extension: string, ctx: OverlayContext): Promise<RenderedUrls> {
   const { astrology, reading, schumann } = ctx;
   const [desktop, mobile, frame] = await Promise.all([
-    withWallpaperOverlay(buffer, astrology, reading, desktopTargetFor(ctx.desktopRatio), false, schumann),
-    withWallpaperOverlay(buffer, astrology, reading, MOBILE_TARGET, false, schumann),
+    withWallpaperOverlay(buffer, astrology, reading, DESKTOP_TARGET, false, schumann),
+    withWallpaperOverlay(buffer, astrology, reading, MOBILE_TARGET, true, schumann),
     withWallpaperOverlay(buffer, astrology, reading, FRAME_TARGET, true, schumann),
   ]);
   const stem = fileStem(ctx);
@@ -125,8 +111,8 @@ async function renderMock(seed: string, ctx: OverlayContext): Promise<RenderedUr
     zodiacSign: reading.rashi?.sign,
   };
   const [svg, mobileSvg, frameSvg] = await Promise.all([
-    generateMockHoroscopeImageSvg({ ...svgOpts, target: desktopTargetFor(ctx.desktopRatio), onLuckChartBox: (box) => (luckChartBoxes.desktop = box) }),
-    generateMockHoroscopeImageSvg({ ...svgOpts, target: MOBILE_TARGET, onLuckChartBox: (box) => (luckChartBoxes.mobile = box) }),
+    generateMockHoroscopeImageSvg({ ...svgOpts, target: DESKTOP_TARGET, onLuckChartBox: (box) => (luckChartBoxes.desktop = box) }),
+    generateMockHoroscopeImageSvg({ ...svgOpts, target: MOBILE_TARGET, flushPlanets: true, onLuckChartBox: (box) => (luckChartBoxes.mobile = box) }),
     generateMockHoroscopeImageSvg({ ...svgOpts, target: FRAME_TARGET, flushPlanets: true, onLuckChartBox: (box) => (luckChartBoxes.frame = box) }),
   ]);
   const stem = fileStem(ctx);

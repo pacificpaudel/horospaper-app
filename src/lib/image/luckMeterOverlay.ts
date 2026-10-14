@@ -6,27 +6,9 @@
 // everywhere, in the same plain lettering as the rest of the wallpaper
 // (previously a chunky 7-segment "LED" style, kept only for this one label).
 import { buildCenteredVectorTextMarkup, measureVectorText, TextStyle } from "./vectorFont";
+import { luckMeterGeometry } from "./luckMeterGeometry";
 
-/**
- * The luck meter's geometry, shared by the drawing and luckMeterTop() so
- * the two can never disagree: a compact panel -- the percentage, then the
- * bar right under it.
- */
-function luckMeterGeometry(width: number, height: number) {
-  const minDim = Math.min(width, height);
-  const barHeight = Math.max(8, Math.round(minDim * 0.011));
-  const barY = height - Math.round(minDim * 0.05);
-  const digitH = barHeight * 2.7;
-  const digitY = barY - barHeight * 1.0 - digitH;
-  const padTop = digitH * 0.28;
-  const padBottom = barHeight * 1.3;
-  return { minDim, barHeight, barY, digitH, digitY, padTop, padBottom, panelTop: digitY - padTop };
-}
-
-/** Top edge of the luck meter's backdrop panel -- other overlays stack above it. */
-export function luckMeterTop(width: number, height: number): number {
-  return luckMeterGeometry(width, height).panelTop;
-}
+export { luckMeterTop } from "./luckMeterGeometry";
 
 /**
  * Draws the luck-meter progress bar with its percentage near the

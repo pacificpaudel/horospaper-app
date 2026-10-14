@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toZonedTime } from "date-fns-tz";
-import { useIsMobileViewport } from "@/lib/client/useIsMobileViewport";
 import Image from "next/image";
 import { NavBar } from "@/components/NavBar";
 import { FrameMode } from "@/components/FrameMode";
@@ -13,22 +12,12 @@ import { apiFetch, ApiError } from "@/lib/client/api";
 import { BirthProfileDTO, HoroscopeDTO } from "@/types/api";
 import { setLastRefreshed } from "@/lib/client/refreshStatus";
 import { LuckChartLayer } from "@/components/LuckChartLayer";
+import { loadFormDraft, saveFormDraft } from "@/lib/client/formDraft";
 
-// Header (5rem) + footer (4rem) chrome subtracted from the viewport height,
-// and the output canvas's own max-w-6xl + padding subtracted from the
-// width, to approximate the exact box the wallpaper actually renders into
-// -- see .output-page's height budget and the <main> classes below.
-const CHROME_PX = 144;
-const CONTENT_MAX_WIDTH_PX = 1152; // max-w-6xl
-const MD_BREAKPOINT_PX = 768;
-
-function desktopViewportRatio(): number | undefined {
-  if (typeof window === "undefined") return undefined;
-  const horizontalPadding = window.innerWidth >= MD_BREAKPOINT_PX ? 64 : 40; // md:px-8 vs px-5, both sides
-  const availableWidth = Math.min(window.innerWidth, CONTENT_MAX_WIDTH_PX) - horizontalPadding;
-  const availableHeight = window.innerHeight - CHROME_PX;
-  return Math.max(1, availableWidth) / Math.max(1, availableHeight);
-}
+// The two wallpaper shapes: Mobile 9:16 (the default) and Desktop 16:9.
+// Frame mode uses the Mobile shape too.
+const MOBILE_CANVAS = { w: 1080, h: 1920 };
+const DESKTOP_CANVAS = { w: 1920, h: 1080 };
 
 // A day's horoscope is keyed by the user's own local calendar date
 // server-side (see todayForTimezone), so it's already correct to
@@ -111,8 +100,19 @@ export default function HomePage() {
   // Owned here, not by LuckChartLayer, so the zoomed Luck Chart stays open
   // (and just redraws) when a new day's wallpaper replaces the old one.
   const [luckChartOpen, setLuckChartOpen] = useState(false);
-  const [viewMode, setViewMode] = useState<ViewMode>("DESKTOP");
-  const isMobile = useIsMobileViewport();
+  // Mobile by default, whatever the device; switched with the header's
+  // "Desktop Version" / "Mobile Version" button or the form's "View as".
+  // Nothing that depends on it shows until the profile has loaded (client-side), so reading the saved view here is safe.
+  const [viewMode, setViewModeState] = useState<ViewMode>(() => {
+    const saved = loadFormDraft<{ viewMode?: ViewMode }>()?.viewMode;
+    return saved === "DESKTOP" || saved === "FRAME" ? saved : "MOBILE";
+  });
+  const isMobile = viewMode !== "DESKTOP";
+  const setViewMode = useCallback((mode: ViewMode) => {
+    setViewModeState(mode);
+    // Remembered with the form's draft, so the next visit opens the same view.
+    saveFormDraft({ ...(loadFormDraft<Record<string, unknown>>() ?? {}), viewMode: mode });
+  }, []);
   const artworkRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -144,7 +144,7 @@ export default function HomePage() {
     try {
       const { horoscope: latest } = await apiFetch<{ horoscope: HoroscopeDTO }>("/api/horoscope/generate", {
         method: "POST",
-        body: JSON.stringify({ timezone: currentTimeZone(), desktopRatio: isMobile ? undefined : desktopViewportRatio() }),
+        body: JSON.stringify({ timezone: currentTimeZone() }),
       });
       setHoroscope(latest);
       if (latest.generationDate === day) {
@@ -156,7 +156,7 @@ export default function HomePage() {
     } finally {
       refreshInFlightRef.current = false;
     }
-  }, [isMobile, setHoroscope]);
+  }, [setHoroscope]);
 
   const hasProfile = Boolean(profile);
   useEffect(() => {
@@ -200,7 +200,7 @@ export default function HomePage() {
     try {
       const { horoscope: generated } = await apiFetch<{ horoscope: HoroscopeDTO }>("/api/horoscope/generate", {
         method: "POST",
-        body: JSON.stringify({ refresh: true, timezone: currentTimeZone(), desktopRatio: isMobile ? undefined : desktopViewportRatio() }),
+        body: JSON.stringify({ refresh: true, timezone: currentTimeZone() }),
       });
       setHoroscope(generated);
       setFrameMode(viewMode === "FRAME");
@@ -214,6 +214,8 @@ export default function HomePage() {
   if (horoscope?.imageUrl) {
     const luckScore = horoscope.dailyReading.luckScore;
     const imageUrl = (isMobile && horoscope.imageUrlMobile) || horoscope.imageUrl;
+    // The Luck Chart opens full screen from the button above the luck %.
+    const hasChart = Boolean(horoscope.dailyReading?.kundli);
 
     if (frameMode) {
       // Frame mode is meant for a dedicated always-on device mounted like a
@@ -223,22 +225,27 @@ export default function HomePage() {
       // `imageUrl` above. Falls back for horoscopes generated before this
       // variant existed.
       const frameImageUrl = horoscope.imageUrlFrame ?? horoscope.imageUrlMobile ?? horoscope.imageUrl;
-      const boxes = horoscope.luckChartBoxes;
-      const frameBox = horoscope.imageUrlFrame ? boxes?.frame : horoscope.imageUrlMobile ? boxes?.mobile : boxes?.desktop;
+      const frameCanvas = horoscope.imageUrlFrame || horoscope.imageUrlMobile ? MOBILE_CANVAS : DESKTOP_CANVAS;
       return (
         <FrameMode imageUrl={frameImageUrl} luckScore={luckScore} onExit={() => setFrameMode(false)}>
-          <LuckChartLayer box={frameBox} date={horoscope.generationDate} isPreview={horoscope.isPreview} open={luckChartOpen} onOpenChange={setLuckChartOpen} />
+          <LuckChartLayer canvas={frameCanvas} hasChart={hasChart} date={horoscope.generationDate} isPreview={horoscope.isPreview} open={luckChartOpen} onOpenChange={setLuckChartOpen} />
         </FrameMode>
       );
     }
 
-    const box = isMobile && horoscope.imageUrlMobile ? horoscope.luckChartBoxes?.mobile : horoscope.luckChartBoxes?.desktop;
+    const canvas = isMobile && horoscope.imageUrlMobile ? MOBILE_CANVAS : DESKTOP_CANVAS;
     return (
       <div className="output-page flex min-h-0 flex-1 flex-col">
-        <NavBar downloadUrl={imageUrl} fullscreenTarget={artworkRef} onLogoClick={() => setHoroscope(null)} />
+        <NavBar
+          downloadUrl={imageUrl}
+          fullscreenTarget={artworkRef}
+          onLogoClick={() => setHoroscope(null)}
+          view={isMobile ? "MOBILE" : "DESKTOP"}
+          onViewChange={setViewMode}
+        />
         <main className="output-canvas mx-auto w-full max-w-6xl px-5 md:px-8">
           <HoroscopeArtwork key={imageUrl} imageUrl={imageUrl} isMobile={isMobile} luckScore={luckScore} frameRef={artworkRef}>
-            <LuckChartLayer box={box} date={horoscope.generationDate} isPreview={horoscope.isPreview} open={luckChartOpen} onOpenChange={setLuckChartOpen} />
+            <LuckChartLayer canvas={canvas} hasChart={hasChart} date={horoscope.generationDate} isPreview={horoscope.isPreview} open={luckChartOpen} onOpenChange={setLuckChartOpen} />
           </HoroscopeArtwork>
         </main>
       </div>

@@ -12,7 +12,8 @@ import type { BirthSnapshot } from "@/lib/astrology/birthSnapshot";
 import { DiagramPlanet, planetBodyMarkup } from "@/lib/image/planetBodies";
 import { isZodiacSign, zodiacBadgeSvg } from "@/lib/image/zodiacIcons";
 
-export type ViewMode = "DESKTOP" | "FRAME";
+/** Mobile (9:16, the default), Desktop (16:9), or Frame (an always-on full-screen display). */
+export type ViewMode = "MOBILE" | "DESKTOP" | "FRAME";
 
 export interface BirthProfileFormValues {
   name: string;
@@ -140,7 +141,7 @@ export function BirthProfileForm({
   // "View as" lives in the parent, so restore it from the draft once.
   useEffect(() => {
     const savedViewMode = loadFormDraft<{ viewMode?: ViewMode }>()?.viewMode;
-    if (savedViewMode === "DESKTOP" || savedViewMode === "FRAME") onViewModeChange(savedViewMode);
+    if (savedViewMode === "MOBILE" || savedViewMode === "DESKTOP" || savedViewMode === "FRAME") onViewModeChange(savedViewMode);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- restore once on mount only
   }, []);
 
@@ -320,6 +321,7 @@ export function BirthProfileForm({
 
       <Field label="View as">
         <select value={viewMode} onChange={(e) => onViewModeChange(e.target.value as ViewMode)} className="input">
+          <option value="MOBILE">Mobile</option>
           <option value="DESKTOP">Desktop</option>
           <option value="FRAME">Frame</option>
         </select>

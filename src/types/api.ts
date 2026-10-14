@@ -69,6 +69,8 @@ export interface DailyReadingDTO {
   rashi: { name: string; nepali: string; sign: string };
   luckScore: number;
   intent: { mood: string; theme: string };
+  /** The kundli the Luck Chart is drawn from; absent when the day has none. */
+  kundli?: unknown | null;
 }
 
 export interface HoroscopeDTO {
