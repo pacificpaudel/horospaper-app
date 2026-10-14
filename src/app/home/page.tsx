@@ -71,7 +71,7 @@ function HoroscopeArtwork({
   children?: React.ReactNode;
 }) {
   return (
-    <div ref={frameRef} className="output-frame">
+    <div ref={frameRef} className={`output-frame ${isMobile ? "output-frame-mobile" : "output-frame-desktop"}`}>
       <Image
         src={imageUrl}
         alt={`Today's horoscope wallpaper. Your luck today: ${luckScore}%.`}

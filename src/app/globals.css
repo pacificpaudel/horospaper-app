@@ -106,13 +106,15 @@ body {
   min-height: calc(100vh - 5rem);
   overflow: hidden;
 }
-.output-page .output-canvas { height: calc(100vh - 9rem); min-height: calc(100vh - 9rem); }
-/* Always shows the whole generated canvas -- corner planet diagrams, the
-   day-name/date header, and the luck meter all sit close to the edges (see
-   planetDiagram.ts / dateHeaderOverlay.ts / luckMeterOverlay.ts), so cropping
-   to fill the viewport risked cutting them off on a mismatched aspect ratio.
-   Letterboxing onto the surrounding background is preferred over that. */
-.output-frame { position: absolute; inset: 0; border-radius: 1rem; overflow: hidden; background: var(--background-elevated); }
+.output-page .output-canvas { height: calc(100vh - 9rem); min-height: calc(100vh - 9rem); display: flex; align-items: center; justify-content: center; }
+/* The wallpaper's frame is exactly the wallpaper's own shape -- 9:16 (Mobile)
+   or 16:9 (Desktop) -- as large as fits the space between header and footer,
+   so only the wallpaper shows: no empty bands beside or above it. The whole
+   canvas always shows (the corner planets, date and luck meter sit close to
+   its edges), never cropped. */
+.output-frame { position: relative; flex: none; max-width: 100%; border-radius: 1rem; overflow: hidden; background: var(--background-elevated); }
+.output-frame-mobile { aspect-ratio: 9 / 16; width: min(100%, calc((100vh - 9rem) * 9 / 16)); }
+.output-frame-desktop { aspect-ratio: 16 / 9; width: min(100%, calc((100vh - 9rem) * 16 / 9)); }
 .output-image { display: block; width: 100%; height: 100%; object-fit: contain; }
 .output-loader { width: 2rem; height: 2rem; border: 2px solid rgba(247, 197, 106, 0.25); border-top-color: var(--gold); border-radius: 50%; animation: spin 900ms linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -125,7 +127,7 @@ body {
 .keep-awake-note { position: absolute; left: 0.75rem; bottom: 0.5rem; z-index: 2; margin: 0; padding: 0.2rem 0.5rem; border-radius: 0.375rem; background: rgba(11, 18, 32, 0.6); color: #f7c56a; font-size: 0.7rem; pointer-events: none; }
 .frame-mode-fullscreen { position: absolute; top: 1rem; right: 1rem; z-index: 1; background: rgba(11, 18, 32, 0.55); opacity: 0.45; transition: opacity 150ms ease; }
 .frame-mode-fullscreen:hover, .frame-mode-fullscreen:focus-visible { opacity: 1; }
-.output-frame:fullscreen { border-radius: 0; background: #000; }
+.output-frame:fullscreen { width: 100vw; height: 100vh; max-width: none; aspect-ratio: auto; border-radius: 0; background: #000; }
 /* "Last refreshed: …", small on the footer's second line. */
 .footer-status { font-size: 0.65rem; font-style: italic; letter-spacing: 0.04em; opacity: 0.75; white-space: nowrap; }
 /* The app version beside the name in the header: a small gold pill, in the
