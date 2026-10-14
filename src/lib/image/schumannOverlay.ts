@@ -166,20 +166,29 @@ const clock = (local: Date) => `${String(local.getUTCHours()).padStart(2, "0")}:
  * dimmed and with no title, axes or labels, so the day and date stay
  * readable on top and the wallpaper keeps its open space. The cropped
  * graph's 72 hours end in hours not yet recorded (blank); it's stretched
- * so the recorded part, up to `now`, fills the panel.
+ * so the stretch up to `now`, plus a little room past it, fills the
+ * panel -- with the current time as a red line, as on the full graph.
  */
 export function buildGraphBackdropMarkup(box: Box, graph: SchumannGraph, rx: number, now: Date): string {
   const clipId = `schumann-backdrop-${Math.round(box.x)}-${Math.round(box.y)}`;
   const image = `data:image/jpeg;base64,${graph.jpeg.toString("base64")}`;
   const rect = `x="${box.x.toFixed(1)}" y="${box.y.toFixed(1)}" width="${box.w.toFixed(1)}" height="${box.h.toFixed(1)}"`;
   let picture = `<image ${rect} preserveAspectRatio="xMidYMid slice" href="${image}" opacity="0.5" />`;
+  let nowLine = "";
   if (graph.cropped) {
     const [year, month, day] = graph.lastDay.split("-").map(Number);
     const startMs = Date.UTC(year, month - 1, day - 2) - TOMSK_UTC_OFFSET_HOURS * HOUR_MS;
-    const recorded = Math.min(1, Math.max(0.2, (Math.min(now.getTime(), graph.updatedAt.getTime()) - startMs) / (PLOT_HOURS * HOUR_MS)));
-    picture = `<image x="${box.x.toFixed(1)}" y="${box.y.toFixed(1)}" width="${(box.w / recorded).toFixed(1)}" height="${box.h.toFixed(1)}" preserveAspectRatio="none" href="${image}" opacity="0.5" />`;
+    const share = (ms: number) => Math.min(1, Math.max(0, (ms - startMs) / (PLOT_HOURS * HOUR_MS)));
+    const nowShare = share(now.getTime());
+    // Shown: the graph up to now, and about 6 hours more so the red line sits clear of the edge.
+    const visible = Math.min(1, Math.max(0.25, Math.max(nowShare, share(graph.updatedAt.getTime())) + 6 / PLOT_HOURS));
+    picture = `<image x="${box.x.toFixed(1)}" y="${box.y.toFixed(1)}" width="${(box.w / visible).toFixed(1)}" height="${box.h.toFixed(1)}" preserveAspectRatio="none" href="${image}" opacity="0.5" />`;
+    if (nowShare > 0 && nowShare < 1) {
+      const x = (box.x + (nowShare / visible) * box.w).toFixed(1);
+      nowLine = `<line x1="${x}" y1="${box.y.toFixed(1)}" x2="${x}" y2="${(box.y + box.h).toFixed(1)}" stroke="${NOW_COLOR}" stroke-opacity="0.85" stroke-width="${Math.max(1.5, box.h * 0.012).toFixed(1)}" />`;
+    }
   }
-  return `<clipPath id="${clipId}"><rect ${rect} rx="${rx.toFixed(1)}" /></clipPath><g clip-path="url(#${clipId})">${picture}<rect ${rect} fill="#0b1220" fill-opacity="0.35" /></g>`;
+  return `<clipPath id="${clipId}"><rect ${rect} rx="${rx.toFixed(1)}" /></clipPath><g clip-path="url(#${clipId})">${picture}<rect ${rect} fill="#0b1220" fill-opacity="0.35" />${nowLine}</g>`;
 }
 
 export function buildGraphMarkup(box: Box, graph: SchumannGraph, l: number, view: SchumannView): string {
