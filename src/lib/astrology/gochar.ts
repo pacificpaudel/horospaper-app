@@ -129,10 +129,53 @@ const TRANSIT_REASONS: Record<Graha, string[]> = {
   ketu: RAHU_REASONS,
 };
 
+// The same results in Nepali, entry for entry.
+const RAHU_REASONS_NE = ["रोग, खतरा", "धन हानि", "सुख", "दुःख", "आर्थिक हानि", "सुख", "हानि", "प्राणको खतरा", "हानि", "लाभ", "सुख", "खर्च"];
+const TRANSIT_REASONS_NE: Record<Graha, string[]> = {
+  sun: [
+    "थकान, धन हानि", "धन हानि, छल", "नयाँ पद, धन, स्वास्थ्य", "रोग, बाधा",
+    "अशान्ति, अस्वस्थता", "शत्रु र रोगमाथि विजय", "थकाउने यात्रा, रोग", "डर, रोग, झगडा",
+    "खतरा, अपमान", "ठूला काममा सफलता", "सम्मान, धन, स्वास्थ्य", "दुःख, हानि, ज्वरो",
+  ],
+  moon: ["भाग्योदय", "धन हानि", "सफलता", "डर", "दुःख", "रोगमुक्ति", "सुख", "अप्रिय घटना", "बिरामी", "इच्छा पूरा", "आनन्द", "खर्च"],
+  mars: [
+    "रोग, वियोग", "डर, धन हानि", "सफलता, सुख", "पद हानि, रोग",
+    "ज्वरो, पीडा", "शत्रुमाथि विजय, लाभ", "कलह, रोग", "ज्वरो, मान हानि",
+    "धन हानि, कमजोरी", "असफलता, थकावट", "लाभ, स्वास्थ्य, सम्पत्ति", "धन हानि, रोग",
+  ],
+  mercury: [
+    "धन हानि", "आर्थिक लाभ", "शत्रुबाट डर", "धन आगमन", "घरमा झगडा", "सफलता",
+    "गलतफहमी", "सन्तान, धन", "अवरोध", "चारैतिर सुख", "समृद्धि", "अपमानको डर",
+  ],
+  jupiter: [
+    "भारी खर्च, यात्रा", "धन, सुखी घर", "पद हानि, रोग", "अपमान, खतरा",
+    "सन्तान, राजकृपा", "शत्रु, रोग", "सुखी विवाह, राम्रो यात्रा", "कष्ट, धन हानि",
+    "सर्व समृद्धि", "सम्पत्तिमा खतरा", "सम्मान, नयाँ पद", "शोक र डर",
+  ],
+  venus: ["सबै सुखभोग", "आर्थिक लाभ", "समृद्धि", "सुख, मित्र", "सन्तान", "दुर्घटना", "जीवनसाथीलाई कष्ट", "धन", "सुख", "झगडा", "सुरक्षा", "धन प्राप्ति"],
+  saturn: [
+    "रोग", "धन र सन्तानमा कष्ट", "पद, सेवक, धन", "जीवनसाथी र धनको हानि",
+    "धनमा ह्रास", "चारैतिर सुख", "जीवनसाथीलाई कष्ट, डर", "हानि, रोग",
+    "हानि, बाधा", "मान हानि, रोग", "सुख, धन, सम्मान", "चोरी, परिवारमा रोग",
+  ],
+  rahu: RAHU_REASONS_NE,
+  ketu: RAHU_REASONS_NE,
+};
+
+/** In Nepali, a favorable transit cancelled by vedha: "good house, blocked by vedha". */
+export const VEDHA_BLOCKED_NE = "शुभ भाव, वेधले रोकियो";
+
+/** Every Nepali reason gocharAssessment can give (plus VEDHA_BLOCKED_NE), e.g. to shape them ahead of drawing. */
+export function nepaliReasonTexts(): string[] {
+  return [...new Set([...Object.values(TRANSIT_REASONS_NE).flat(), VEDHA_BLOCKED_NE])];
+}
+
 export interface GocharAssessment {
   quality: GocharQuality;
   /** The classical result for this house, in short. */
   reason: string;
+  /** The same in Nepali. */
+  reasonNe: string;
   /** For a favorable transit cancelled by vedha: the graha causing it and its house. */
   blockedBy?: { planet: string; house: number };
 }
@@ -145,8 +188,9 @@ export interface GocharAssessment {
 export function gocharAssessment(planetName: string, house: number, allHouses?: Record<string, number>): GocharAssessment {
   const graha = planetName.toLowerCase() as Graha;
   const results = TRANSIT_RESULTS[graha];
-  if (!results || house < 1 || house > 12) return { quality: "neutral", reason: "" };
+  if (!results || house < 1 || house > 12) return { quality: "neutral", reason: "", reasonNe: "" };
   const reason = TRANSIT_REASONS[graha][house - 1];
+  const reasonNe = TRANSIT_REASONS_NE[graha][house - 1];
   const code = results[house - 1];
   if (code === "G" && allHouses) {
     const vedhaHouse = VEDHA[graha][house];
@@ -157,9 +201,9 @@ export function gocharAssessment(planetName: string, house: number, allHouses?: 
         Object.entries(allHouses).some(([name, h]) => name.toLowerCase() === other && h === vedhaHouse) &&
         !NO_MUTUAL_VEDHA.some(([x, y]) => (x === graha && y === other) || (x === other && y === graha))
     );
-    if (blocker) return { quality: "neutral", reason, blockedBy: { planet: blocker[0].toUpperCase() + blocker.slice(1), house: vedhaHouse } };
+    if (blocker) return { quality: "neutral", reason, reasonNe, blockedBy: { planet: blocker[0].toUpperCase() + blocker.slice(1), house: vedhaHouse } };
   }
-  return { quality: code === "G" ? "good" : code === "B" ? "bad" : "neutral", reason };
+  return { quality: code === "G" ? "good" : code === "B" ? "bad" : "neutral", reason, reasonNe };
 }
 
 /**

@@ -1,9 +1,12 @@
 import type { KundliData } from "@/lib/astrologyApi";
-import { gocharKundli, kundliChartMarkup, MOVED_COLOR, SignStay, stayPieMarkup } from "./kundliOverlay";
+import { gocharKundli, kundliChartMarkup, MOVED_COLOR, SignStay } from "./kundliOverlay";
 import { devanagariMarkup, PANCHANG_FACTS_COLOR, PANCHANG_SUMMARY_COLOR } from "./panchangOverlay";
+import { shapeDevanagariText, type ShapedText } from "./devanagariShaper";
+import { fittedPlanetBodyMarkup, planetBodyFor } from "./planetBodies";
+import { getMoonPhase } from "@/lib/astrology/ephemeris";
 import { buildVectorTextMarkup, measureVectorText, TextStyle, wrapVectorText } from "./vectorFont";
 import type { Box } from "./schumannOverlay";
-import { gocharAssessment, gocharQuality, GocharQuality } from "@/lib/astrology/gochar";
+import { gocharAssessment, gocharQuality, GocharQuality, nepaliReasonTexts, VEDHA_BLOCKED_NE } from "@/lib/astrology/gochar";
 import { layoutLuckChartView, type GocharLayout } from "./wallpaperLayout";
 import type { DailyReading } from "@/lib/dailyReading";
 
@@ -73,7 +76,14 @@ const QUALITY_COLORS: Record<GocharQuality, string> = {
   bad: "#ff2020",
 };
 
+/** Each graha's full Nepali name, for the full-screen view's Analysis. */
+const NEPALI_NAMES: Record<string, string> = {
+  Sun: "सूर्य", Moon: "चन्द्र", Mars: "मङ्गल", Mercury: "बुध", Jupiter: "बृहस्पति",
+  Venus: "शुक्र", Saturn: "शनि", Rahu: "राहु", Ketu: "केतु",
+};
+
 const SIGN_NAMES = ["", "ARIES", "TAURUS", "GEMINI", "CANCER", "LEO", "VIRGO", "LIBRA", "SCORPIO", "SAGITTARIUS", "CAPRICORN", "AQUARIUS", "PISCES"];
+const SIGN_NAMES_NE = ["", "मेष", "वृष", "मिथुन", "कर्कट", "सिंह", "कन्या", "तुला", "वृश्चिक", "धनु", "मकर", "कुम्भ", "मीन"];
 const ordinal = (n: number) => `${n}${n % 10 === 1 && n !== 11 ? "ST" : n % 10 === 2 && n !== 12 ? "ND" : n % 10 === 3 && n !== 13 ? "RD" : "TH"}`;
 
 /**
@@ -82,15 +92,47 @@ const ordinal = (n: number) => `${n}${n % 10 === 1 && n !== 11 ? "ST" : n % 10 =
  * bad), the verdict in its colour, and why -- Phaladeepika's stated result
  * for that house, or, for a favorable transit cancelled by vedha, which
  * graha blocks it. Text shrinks until it all fits the box.
+ *
+ * Roomy (the full-screen view) starts its text larger, keeps the panel at
+ * the box's full height, and, given `nepaliNames`, leads each graha's line
+ * with its figure and its Nepali name ("☉ सूर्य SUN · 3RD · GOOD"); given
+ * `nepaliTitle`, the heading reads "विष्लेषण / ANALYSIS", like the chart's own;
+ * given `nepaliReasons`, each reason leads with its Nepali ("लाभ / GAIN").
  */
-function analysisMarkup(box: Box, planets: string[], allHouses: Record<string, number>, natalMoonSign: number, roomy = false): string {
+function analysisMarkup(
+  box: Box,
+  planets: string[],
+  allHouses: Record<string, number>,
+  natalMoonSign: number,
+  roomy = false,
+  nepaliNames?: Record<string, ShapedText>,
+  moonIllumination = 0.5,
+  nepaliTitle?: ShapedText,
+  nepaliReasons?: Record<string, ShapedText>,
+  moonSignNe?: ShapedText
+): string {
+  const latinTitle = nepaliTitle ? " / ANALYSIS" : "ANALYSIS";
+  const titleWidth = (s: number) => (nepaliTitle ? nepaliTitle.width * s * DEVANAGARI_SCALE : 0) + measureVectorText(latinTitle, s, titleStyle);
   const rows = planets.map((name) => ({ name, house: allHouses[name], ...gocharAssessment(name, allHouses[name], allHouses) }));
+  const named = roomy && nepaliNames !== undefined;
+  // Each graha's figure, in a FIGURE_W x FIGURE_H box (shares of the text
+  // size), then the Nepali name; the coloured dot stands in without them.
+  const FIGURE_W = 1.7;
+  const FIGURE_H = 1.3;
+  const lead = (s: number) => (named ? s * (FIGURE_W + 0.35) : s);
+  const nepaliWidth = (name: string, s: number) => (named && nepaliNames[name] ? nepaliNames[name].width * s * DEVANAGARI_SCALE + s * 0.4 : 0);
   const pad = box.w * 0.06;
+  // Roomy, less padding above and below, leaving the height to the text.
+  const padY = roomy ? Math.min(pad, box.h * 0.04) : pad;
   const innerW = box.w - pad * 2;
   const titleStyle: TextStyle = { face: "clear", color: "#f7c56a", strokeWidth: 0.12, tracking: 0.2 };
   const noteStyle: TextStyle = { face: "clear", color: "#a9b1c4", strokeWidth: 0.11, tracking: 0.08 };
   const reasonStyle: TextStyle = { face: "clear", color: "#d7dce8", strokeWidth: 0.11, tracking: 0.06 };
-  const subtitle = `HOUSE FROM MOON: ${SIGN_NAMES[natalMoonSign]}`;
+  // Given `moonSignNe`: "HOUSE FROM MOON: वृश्चिक / SCORPIO".
+  const subtitleLead = "HOUSE FROM MOON: ";
+  const subtitle = moonSignNe ? ` / ${SIGN_NAMES[natalMoonSign]}` : `${subtitleLead}${SIGN_NAMES[natalMoonSign]}`;
+  const subtitleWidth = (s: number) =>
+    moonSignNe ? measureVectorText(subtitleLead, s, noteStyle) + moonSignNe.width * s * DEVANAGARI_SCALE + measureVectorText(subtitle, s, noteStyle) : measureVectorText(subtitle, s, noteStyle);
   const footer = "PER PHALADEEPIKA CH. 26";
 
   // A wide, short box (the portrait full-screen view) sets the grahas in
@@ -104,32 +146,83 @@ function analysisMarkup(box: Box, planets: string[], allHouses: Record<string, n
   // Largest text size at which every line fits the box's width and height.
   // Starts as large as could fit (much larger in the roomy full-screen view)
   // and shrinks until every line fits.
-  let size = roomy ? Math.min(box.w * 0.045 * columns, box.h * 0.08) : Math.min(box.w * 0.055, box.h * 0.04);
-  let layout: { head: string; reason: string[]; color: string }[] = [];
+  // Named, a graha's heading may break after its name ("3RD · GOOD" on a
+  // line of its own) when that lets the text stay larger.
+  let size = roomy ? Math.min(box.w * 0.056 * columns, box.h * 0.1) : Math.min(box.w * 0.055, box.h * 0.04);
+  // A reason line: English, led on its first line (given `nepaliReasons`)
+  // by the Nepali meaning -- "लाभ / GAIN", or the Nepali alone on a line
+  // ending " /" when the two don't fit together.
+  type ReasonLine = { ne?: ShapedText; text: string };
+  let layout: { name: string; head: string[]; reason: ReasonLine[]; color: string }[] = [];
   let height = 0;
-  const rowHeight = (row: { reason: string[] }, s: number) => (1 + row.reason.length) * s * 1.45 + s * 0.45;
-  for (let attempt = 0; attempt < 40; attempt++) {
+  const lineStep = named ? 1.38 : 1.45;
+  // Lines in Nepali step further, past their descenders (the ू of सूर्य).
+  const headStep = named ? 1.6 : lineStep;
+  // And clear of the line above, for their matras.
+  const REASON_NE_AIR = 0.2;
+  const reasonNeWidth = (ne: ShapedText, s: number) => ne.width * s * 0.9 * DEVANAGARI_SCALE;
+  const reasonLines = (row: (typeof rows)[number], s: number): ReasonLine[] => {
+    const english = row.blockedBy ? `GOOD HOUSE, BLOCKED BY ${row.blockedBy.planet.toUpperCase()} IN ${ordinal(row.blockedBy.house)} (VEDHA)` : row.reason;
+    const width = colW - lead(s);
+    const wrapped = wrapVectorText(english, width, s * 0.9, reasonStyle).map((text) => ({ text }));
+    const ne = named ? nepaliReasons?.[row.blockedBy ? VEDHA_BLOCKED_NE : row.reasonNe] : undefined;
+    if (!ne) return wrapped;
+    const joined = ` / ${english}`;
+    if (reasonNeWidth(ne, s) + measureVectorText(joined, s * 0.9, reasonStyle) <= width) return [{ ne, text: joined }];
+    return [{ ne, text: " /" }, ...wrapped];
+  };
+  // Named rows get a little more air above, for the Devanagari's matras.
+  const rowHeight = (row: { head: string[]; reason: ReasonLine[] }, s: number) =>
+    s * headStep +
+    (row.head.length - 1) * s * lineStep +
+    row.reason.reduce((sum, line) => sum + s * (line.ne ? headStep + REASON_NE_AIR : lineStep), 0) +
+    s * (named ? 0.7 : 0.45);
+  fitting: for (let attempt = 0; attempt < 40; attempt++) {
     const s = size;
-    const fit = (text: string, style: TextStyle, w = colW) => measureVectorText(text, s, style) <= w;
-    layout = rows.map((row) => ({
-      head: `${row.name.toUpperCase()} · ${ordinal(row.house)} · ${row.quality.toUpperCase()}`,
-      reason: wrapVectorText(row.blockedBy ? `GOOD HOUSE, BLOCKED BY ${row.blockedBy.planet.toUpperCase()} IN ${ordinal(row.blockedBy.house)} (VEDHA)` : row.reason, colW - s, s * 0.9, reasonStyle),
-      color: QUALITY_COLORS[row.quality],
-    }));
-    const tallest = Math.max(...Array.from({ length: columns }, (_, c) => layout.slice(c * perColumn, (c + 1) * perColumn).reduce((sum, row) => sum + rowHeight(row, s), 0)));
-    height = pad * 2 + s * 1.3 * 1.8 + s * 0.85 * 1.7 + tallest + s * 0.8 * 1.6;
-    const widthOk = fit("ANALYSIS", titleStyle, innerW) && measureVectorText(subtitle, s * 0.85, noteStyle) <= innerW && layout.every((row) => fit(row.head, titleStyle, colW - s));
-    if (height <= box.h && widthOk) break;
+    for (const split of named ? [false, true] : [false]) {
+      layout = rows.map((row) => {
+        const verdict = `${ordinal(row.house)} · ${row.quality.toUpperCase()}`;
+        return {
+          name: row.name,
+          head: split ? [row.name.toUpperCase(), verdict] : [`${row.name.toUpperCase()} · ${verdict}`],
+          reason: reasonLines(row, s),
+          color: QUALITY_COLORS[row.quality],
+        };
+      });
+      const tallest = Math.max(...Array.from({ length: columns }, (_, c) => layout.slice(c * perColumn, (c + 1) * perColumn).reduce((sum, row) => sum + rowHeight(row, s), 0)));
+      height = padY * 2 + s * 1.3 * 1.8 + s * 0.85 * 1.7 + tallest + s * 0.8 * 1.6;
+      const widthOk =
+        titleWidth(s * 1.3) <= innerW &&
+        subtitleWidth(s * 0.85) <= innerW &&
+        layout.every((row) => row.head.every((line, k) => (k === 0 ? nepaliWidth(row.name, s) : 0) + measureVectorText(line, s, titleStyle) <= colW - lead(s))) &&
+        layout.every((row) => row.reason.every((line) => !line.ne || reasonNeWidth(line.ne, s) + measureVectorText(line.text, s * 0.9, reasonStyle) <= colW - lead(s)));
+      if (height <= box.h && widthOk) break fitting;
+    }
     size *= 0.93;
   }
 
   const parts = [
-    `<rect x="${box.x.toFixed(1)}" y="${box.y.toFixed(1)}" width="${box.w.toFixed(1)}" height="${Math.min(height, box.h).toFixed(1)}" rx="${(size * 0.8).toFixed(1)}" fill="#080b16" fill-opacity="0.85" stroke="#f7c56a" stroke-opacity="0.55" stroke-width="${Math.max(1, size * 0.08).toFixed(1)}" />`,
+    `<rect x="${box.x.toFixed(1)}" y="${box.y.toFixed(1)}" width="${box.w.toFixed(1)}" height="${(roomy ? box.h : Math.min(height, box.h)).toFixed(1)}" rx="${(size * 0.8).toFixed(1)}" fill="#080b16" fill-opacity="0.85" stroke="#f7c56a" stroke-opacity="0.55" stroke-width="${Math.max(1, size * 0.08).toFixed(1)}" />`,
   ];
-  let y = box.y + pad;
-  parts.push(buildVectorTextMarkup("ANALYSIS", box.x + pad, y, size * 1.3, titleStyle));
+  let y = box.y + padY;
+  const titleSize = size * 1.3;
+  let titleX = box.x + pad;
+  if (nepaliTitle) {
+    // Larger than the Latin and on its baseline, as in the chart's title.
+    parts.push(devanagariMarkup(nepaliTitle, titleX, y + titleSize - titleSize * DEVANAGARI_SCALE * 0.72, titleSize * DEVANAGARI_SCALE, titleStyle.color!));
+    titleX += nepaliTitle.width * titleSize * DEVANAGARI_SCALE;
+  }
+  parts.push(buildVectorTextMarkup(latinTitle, titleX, y, titleSize, titleStyle));
   y += size * 1.3 * 1.8;
-  parts.push(buildVectorTextMarkup(subtitle, box.x + pad, y, size * 0.85, noteStyle));
+  let subtitleX = box.x + pad;
+  if (moonSignNe) {
+    const noteSize = size * 0.85;
+    parts.push(buildVectorTextMarkup(subtitleLead, subtitleX, y, noteSize, noteStyle));
+    subtitleX += measureVectorText(subtitleLead, noteSize, noteStyle);
+    parts.push(devanagariMarkup(moonSignNe, subtitleX, y + noteSize - noteSize * DEVANAGARI_SCALE * 0.72, noteSize * DEVANAGARI_SCALE, noteStyle.color!));
+    subtitleX += moonSignNe.width * noteSize * DEVANAGARI_SCALE;
+  }
+  parts.push(buildVectorTextMarkup(subtitle, subtitleX, y, size * 0.85, noteStyle));
   y += size * 0.85 * 1.7;
   const rowsTop = y;
   let bottom = y;
@@ -137,12 +230,31 @@ function analysisMarkup(box: Box, planets: string[], allHouses: Record<string, n
     const column = Math.floor(i / perColumn);
     if (i % perColumn === 0) y = rowsTop;
     const x = box.x + pad + column * (colW + colGap);
-    parts.push(`<circle cx="${(x + size * 0.35).toFixed(1)}" cy="${(y + size / 2).toFixed(1)}" r="${(size * 0.35).toFixed(1)}" fill="${row.color}" />`);
-    parts.push(buildVectorTextMarkup(row.head, x + size, y, size, { ...titleStyle, color: row.color, tracking: 0.1 }));
-    y += size * 1.45;
+    const textX = x + lead(size);
+    const body = planetBodyFor(row.name);
+    const nepali = nepaliNames?.[row.name];
+    if (named) {
+      y += size * 0.25;
+      if (body) parts.push(fittedPlanetBodyMarkup(body, `analysis-body-${i}`, x + (size * FIGURE_W) / 2, y + size / 2, size * FIGURE_W, size * FIGURE_H, moonIllumination));
+      // Larger than the Latin and on its baseline, as in the title.
+      if (nepali) parts.push(devanagariMarkup(nepali, textX, y + size - size * DEVANAGARI_SCALE * 0.72, size * DEVANAGARI_SCALE, row.color));
+    } else {
+      parts.push(`<circle cx="${(x + size * 0.35).toFixed(1)}" cy="${(y + size / 2).toFixed(1)}" r="${(size * 0.35).toFixed(1)}" fill="${row.color}" />`);
+    }
+    row.head.forEach((line, k) => {
+      parts.push(buildVectorTextMarkup(line, textX + (k === 0 ? nepaliWidth(row.name, size) : 0), y, size, { ...titleStyle, color: row.color, tracking: 0.1 }));
+      y += size * (k === 0 ? headStep : lineStep);
+    });
     for (const line of row.reason) {
-      parts.push(buildVectorTextMarkup(line, x + size, y, size * 0.9, reasonStyle));
-      y += size * 1.45;
+      let lineX = textX;
+      if (line.ne) y += size * REASON_NE_AIR;
+      if (line.ne) {
+        const neSize = size * 0.9 * DEVANAGARI_SCALE;
+        parts.push(devanagariMarkup(line.ne, lineX, y + size * 0.9 - neSize * 0.72, neSize, reasonStyle.color!));
+        lineX += reasonNeWidth(line.ne, size);
+      }
+      parts.push(buildVectorTextMarkup(line.text, lineX, y, size * 0.9, reasonStyle));
+      y += size * (line.ne ? headStep : lineStep);
     }
     y += size * 0.45;
     bottom = Math.max(bottom, y);
@@ -153,21 +265,20 @@ function analysisMarkup(box: Box, planets: string[], allHouses: Record<string, n
 
 /**
  * "● GOOD  ● NEUTRAL  ● BAD", plus "- - LAST POSITION" in grey when a
- * graha's previous sign is drawn, centered on `cx` in a row `h` tall from
- * `top`; shrinks only if it would overflow `maxW`. (The grey legend used
- * to share the title line, which shrank the whole "LUCK CHART" title.)
+ * graha's previous sign is drawn and `moved` asks for it, centered on `cx`
+ * in a row `h` tall from `top`; shrinks only if it would overflow `maxW`.
+ * (The grey legend used to share the title line, which shrank the whole
+ * "LUCK CHART" title.)
  */
-function qualityLegend(cx: number, top: number, h: number, maxW: number, moved: boolean, zoom = false): string {
+function qualityLegend(cx: number, top: number, h: number, maxW: number, moved: boolean): string {
   const style: TextStyle = { face: "clear", color: "#c9cfdc", strokeWidth: 0.12, tracking: 0.14 };
-  type Kind = "dot" | "dash" | "pie";
+  type Kind = "dot" | "dash";
   const entries: { label: string; color: string; kind: Kind }[] = [
     ...(["good", "neutral", "bad"] as const).map((quality) => ({ label: quality.toUpperCase(), color: QUALITY_COLORS[quality], kind: "dot" as Kind })),
     ...(moved ? [{ label: "LAST POSITION", color: MOVED_COLOR, kind: "dash" as Kind }] : []),
-    // Zoomed, the pies carry percentages; say what they are.
-    ...(zoom ? [{ label: "% OF STAY IN SIGN: PASSED / LEFT", color: "#c9cfdc", kind: "pie" as Kind }] : []),
   ];
   const styleOf = (color: string): TextStyle => ({ ...style, color: color === MOVED_COLOR ? MOVED_COLOR : style.color });
-  const markerW = (size: number, kind: Kind) => size * (kind === "dash" ? 1.6 : kind === "pie" ? 1.45 : 1.1);
+  const markerW = (size: number, kind: Kind) => size * (kind === "dash" ? 1.6 : 1.1);
   const rowWidth = (size: number) =>
     entries.reduce((sum, e) => sum + markerW(size, e.kind) + measureVectorText(e.label, size, styleOf(e.color)), 0) + size * 1.6 * (entries.length - 1);
   const ideal = h * 0.42;
@@ -182,9 +293,7 @@ function qualityLegend(cx: number, top: number, h: number, maxW: number, moved: 
       const marker =
         kind === "dash"
           ? `<line x1="${x.toFixed(1)}" y1="${midY}" x2="${(x + size * 1.2).toFixed(1)}" y2="${midY}" stroke="${color}" stroke-width="${Math.max(1, size * 0.14).toFixed(1)}" stroke-dasharray="${(size * 0.3).toFixed(1)} ${(size * 0.2).toFixed(1)}" />`
-          : kind === "pie"
-            ? stayPieMarkup(x + size * 0.55, mid, size * 0.55, 0.65)
-            : `<circle cx="${(x + size * 0.38).toFixed(1)}" cy="${midY}" r="${(size * 0.38).toFixed(1)}" fill="${color}" />`;
+          : `<circle cx="${(x + size * 0.38).toFixed(1)}" cy="${midY}" r="${(size * 0.38).toFixed(1)}" fill="${color}" />`;
       const markup = marker + buildVectorTextMarkup(label, x + markerW(size, kind), y, size, styleOf(color));
       x += markerW(size, kind) + measureVectorText(label, size, styleOf(color)) + gap;
       return markup;
@@ -214,12 +323,24 @@ const MONTH_ABBREVIATIONS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "A
 /** The title's date, as a share of the title's cap height. */
 const DATE_SCALE = 0.5;
 
-export function buildGocharMarkup(layout: GocharLayout, kundli: KundliData, onDate: string, opts: { zoom?: boolean } = {}): string {
+export function buildGocharMarkup(
+  layout: GocharLayout,
+  kundli: KundliData,
+  onDate: string,
+  /**
+   * `zoom`: the full-screen view; `nepaliNames`: each graha's shaped Nepali
+   * name, `analysisTitle` the shaped "विष्लेषण" and `nepaliReasons` each
+   * Nepali reason (by its text), and `moonSignNe` the natal Moon sign in
+   * Nepali, for its Analysis.
+   */
+  opts: { zoom?: boolean; nepaliNames?: Record<string, ShapedText>; analysisTitle?: ShapedText; nepaliReasons?: Record<string, ShapedText>; moonSignNe?: ShapedText } = {}
+): string {
   const { x0, y0, size, caption, facts, strip } = layout;
   const [year, month, day] = onDate.split("-").map(Number);
   const noon = new Date(Date.UTC(year, month - 1, day, 12));
   const today = gocharKundli(kundli, noon);
   const { previous, stays } = signHistory(kundli, today, noon);
+  const moonIllumination = getMoonPhase(noon).illumination;
   const moved = today.planets.some((planet) => previous.planets.find((before) => before.name === planet.name)?.sign !== planet.sign);
 
   // Each graha coloured by how its transit sits, counted from the natal
@@ -240,14 +361,16 @@ export function buildGocharMarkup(layout: GocharLayout, kundli: KundliData, onDa
   // (good/bad, good/neutral or neutral/bad), each graha's label in its own
   // half; with all three, good and bad take the halves (they outrank
   // neutral) and neutral labels go wherever there's room. Empty: no tint.
+  // Zoomed, neutral grahas tint nothing: only green and red backgrounds.
   const qualitiesByHouse: GocharQuality[][] = Array.from({ length: 12 }, () => []);
   if (natalMoonSign !== undefined) {
     for (const planet of today.planets) {
       qualitiesByHouse[(planet.sign - today.ascendantSign + 12) % 12].push(gocharQuality(planet.name, allHouses[planet.name], allHouses));
     }
   }
+  const tinted = opts.zoom ? (["good", "bad"] as const) : (["good", "neutral", "bad"] as const);
   const houseFill = (i: number): string | [string, string] | null => {
-    const present = (["good", "neutral", "bad"] as const).filter((q) => qualitiesByHouse[i].includes(q));
+    const present = tinted.filter((q) => qualitiesByHouse[i].includes(q));
     if (!present.length) return null;
     if (present.length === 1) return QUALITY_COLORS[present[0]];
     const [first, second] = present.length === 3 ? (["good", "bad"] as const) : present;
@@ -288,9 +411,12 @@ export function buildGocharMarkup(layout: GocharLayout, kundli: KundliData, onDa
       dateStyle
     ),
     facts ? devanagariMarkup(facts.text, centerX, caption.y + layout.titleHeight + (caption.h - layout.legendHeight - layout.titleHeight - facts.size) / 2 - facts.size * 0.15, facts.size, PANCHANG_FACTS_COLOR, "center") : "",
-    qualityLegend(centerX, caption.y + caption.h - layout.legendHeight, layout.legendHeight, caption.w, moved, opts.zoom),
-    kundliChartMarkup(x0, y0, size, today, null, previous, colorFor, houseFill, natalMoonSign, (name) => stays.get(name), opts.zoom),
-    layout.analysis && natalMoonSign !== undefined ? analysisMarkup(layout.analysis, today.planets.map((p) => p.name), allHouses, natalMoonSign, opts.zoom) : "",
+    // Zoomed, the legend is just the three colours.
+    qualityLegend(centerX, caption.y + caption.h - layout.legendHeight, layout.legendHeight, caption.w * (opts.zoom ? 0.6 : 1), moved && !opts.zoom),
+    kundliChartMarkup(x0, y0, size, today, null, previous, colorFor, houseFill, natalMoonSign, (name) => stays.get(name), opts.zoom, moonIllumination),
+    layout.analysis && natalMoonSign !== undefined
+      ? analysisMarkup(layout.analysis, today.planets.map((p) => p.name), allHouses, natalMoonSign, opts.zoom, opts.nepaliNames, moonIllumination, opts.analysisTitle, opts.nepaliReasons, opts.moonSignNe)
+      : "",
   ];
   if (strip) {
     const { box, lines, size: lineSize, lineHeight, padY } = strip;
@@ -310,6 +436,22 @@ export function buildGocharMarkup(layout: GocharLayout, kundli: KundliData, onDa
  * at any size.
  */
 export async function buildLuckChartViewSvg(width: number, height: number, kundli: KundliData, onDate: string, panchang: DailyReading["panchang"]): Promise<string> {
-  const layout = await layoutLuckChartView(width, height, panchang);
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="${width}" height="${height}" fill="#05070f" />${buildGocharMarkup(layout, kundli, onDate, { zoom: true })}</svg>`;
+  const shapeAll = (texts: [string, string][]) => Promise.all(texts.map(async ([key, text]) => [key, await shapeDevanagariText(text)] as const));
+  const moonSign = kundli.planets.find((planet) => planet.name === "Moon")?.sign;
+  const moonSignName = moonSign !== undefined ? SIGN_NAMES_NE[moonSign] : undefined;
+  const [layout, names, analysisTitle, reasons, moonSignNe] = await Promise.all([
+    layoutLuckChartView(width, height, panchang),
+    shapeAll(Object.entries(NEPALI_NAMES)),
+    shapeDevanagariText("विष्लेषण"),
+    shapeAll(nepaliReasonTexts().map((text) => [text, text])),
+    moonSignName ? shapeDevanagariText(moonSignName) : undefined,
+  ]);
+  const markup = buildGocharMarkup(layout, kundli, onDate, {
+    zoom: true,
+    nepaliNames: Object.fromEntries(names),
+    analysisTitle,
+    nepaliReasons: Object.fromEntries(reasons),
+    moonSignNe,
+  });
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="${width}" height="${height}" fill="#05070f" />${markup}</svg>`;
 }

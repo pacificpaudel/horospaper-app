@@ -8,6 +8,7 @@ import type { PlanetKey } from "@/lib/astrology/constants";
 import { buildCenteredVectorTextMarkup, measureVectorText, TextStyle } from "./vectorFont";
 import { DEVANAGARI_LABELS } from "./devanagariLabels";
 import { embedChartSvg } from "./chartSvgOutline";
+import { fittedPlanetBodyMarkup, PLANET_BODY_EXTENT, planetBodyFor } from "./planetBodies";
 
 // The person's birth chart as a North-Indian kundli, drawn opaque just above
 // the luck meter, labelled in Nepali like freeastrologyapi.com's Nepali
@@ -190,6 +191,8 @@ interface Label {
   planet?: string;
   /** Luck Chart only: the graha's stay in this sign so far, in days, of its whole stay there. */
   stay?: SignStay;
+  /** Zoomed Luck Chart only: the height of the graha's figure drawn before its name. */
+  icon?: number;
 }
 
 /** How long a graha has been in its current sign (`elapsed` days) out of its whole stay (`total` days). */
@@ -214,8 +217,19 @@ const pieGapFor = (zoom: boolean) => (zoom ? ZOOM_PIE_GAP : PIE_GAP);
 const pieScaleFor = (zoom: boolean) => (zoom ? ZOOM_PIE_SCALE : PIE_SCALE);
 const stayWidth = (label: Label, fontSize: number, zoom: boolean) => (label.stay ? fontSize * (pieGapFor(zoom) + pieScaleFor(zoom)) : 0);
 
-
-
+// The zoomed view's graha figure before each name: between these shares of
+// the font size tall, as large as the house has room for.
+const ICON_MIN = 0.8;
+const ICON_MAX = 1.5;
+// Clear of the ring drawn around a just-moved graha's name.
+const ICON_GAP = 0.4;
+/** A figure's width per unit of its height (wider for the Sun's rays and Saturn's ring). */
+const iconAspect = (planet: string) => {
+  const body = planetBodyFor(planet);
+  return body ? PLANET_BODY_EXTENT[body].wide / PLANET_BODY_EXTENT[body].tall : 0;
+};
+/** The figure's width plus its gap to the name, or 0 without one. */
+const iconWidth = (label: Label, fontSize: number) => (label.icon && label.planet ? label.icon * iconAspect(label.planet) + fontSize * ICON_GAP : 0);
 
 /**
  * A pie of radius r at (cx, cy): `share` (0-1) of it green from 12 o'clock
@@ -325,10 +339,10 @@ function labelWidth(label: Label, fontSize: number, zoom = false): number {
   const glyph = DEVANAGARI_LABELS[label.text];
   if (!glyph) return 0;
   const parenWidth = label.retro ? measureVectorText("(", fontSize * 0.62, { strokeWidth: 0.1, tracking: 0 }) + fontSize * 0.04 : 0;
-  return glyph.width * fontSize + parenWidth * 2 + stayWidth(label, fontSize, zoom);
+  return iconWidth(label, fontSize) + glyph.width * fontSize + parenWidth * 2 + stayWidth(label, fontSize, zoom);
 }
 
-function devanagariLabelMarkup(label: Label, cx: number, top: number, fontSize: number, zoom = false): string {
+function devanagariLabelMarkup(label: Label, cx: number, top: number, fontSize: number, zoom = false, iconId = "", moonIllumination = 0.5): string {
   const glyph = DEVANAGARI_LABELS[label.text];
   if (!glyph) return "";
   const parenSize = fontSize * 0.62;
@@ -336,11 +350,18 @@ function devanagariLabelMarkup(label: Label, cx: number, top: number, fontSize: 
   const parenWidth = label.retro ? measureVectorText("(", parenSize, parenStyle) + fontSize * 0.04 : 0;
   const textWidth = glyph.width * fontSize;
   const pieScale = pieScaleFor(zoom);
-  const left = cx - (textWidth + parenWidth * 2 + stayWidth(label, fontSize, zoom)) / 2;
+  const figureWidth = iconWidth(label, fontSize);
+  const start = cx - labelWidth(label, fontSize, zoom) / 2;
+  // Everything after the figure is laid out from `left`, as without one.
+  const left = start + figureWidth;
   // The shirorekha (headline) sits ~0.7 em above the baseline in Noto Sans Devanagari.
   const baseline = top + fontSize * 0.72;
   const parenTop = top - fontSize * 0.02;
+  const body = label.planet ? planetBodyFor(label.planet) : undefined;
   return [
+    body && label.icon
+      ? fittedPlanetBodyMarkup(body, iconId, start + (figureWidth - fontSize * ICON_GAP) / 2, top + fontSize * 0.42, label.icon * iconAspect(label.planet!), label.icon, moonIllumination)
+      : "",
     label.retro ? buildCenteredVectorTextMarkup("(", left + parenWidth / 2, parenTop, parenSize, parenStyle) : "",
     `<path d="${glyph.d}" fill="${label.color}" transform="translate(${(left + parenWidth).toFixed(1)} ${baseline.toFixed(1)}) scale(${fontSize.toFixed(2)})" />`,
     label.retro ? buildCenteredVectorTextMarkup(")", left + parenWidth + textWidth + parenWidth / 2, parenTop, parenSize, parenStyle) : "",
@@ -389,9 +410,12 @@ export function kundliChartMarkup(
    * The full-screen view: labels and number circles set smaller relative
    * to the houses (the chart itself is much bigger, so they stay large),
    * leaving each house room to breathe, and pies big enough to show their
-   * percentages.
+   * percentages -- and each graha's figure before its name, sized to the
+   * room its house has left.
    */
-  zoom = false
+  zoom = false,
+  /** Zoomed: the Moon's lit share today, for its figure's phase. */
+  moonIllumination = 0.5
 ): string {
   const P = (fx: number, fy: number) => `${(x0 + fx * size).toFixed(1)} ${(y0 + fy * size).toFixed(1)}`;
 
@@ -457,10 +481,12 @@ export function kundliChartMarkup(
 
   // Each label's center, so a moved graha can be joined to where it was.
   const centers = new Map<string, [number, number]>();
+  // Numbers each graha figure's gradient ids, unique in the document.
+  let iconCount = 0;
   const labels = byHouse
     .map((entries, i) => {
       const fill = fills[i];
-      if (!Array.isArray(fill)) return placeLabels(entries, i, HOUSES[i].label, WIDE_HOUSES.has(i) ? 2 : 1);
+      if (!Array.isArray(fill)) return placeLabels(entries, i, HOUSES[i].label, WIDE_HOUSES.has(i) ? 2 : 1, null);
       // A split house: labels in the colour of a half go there; anything
       // else (lagna, neutral, grey "was here") evens out the two sides.
       const groups: Label[][] = [[], []];
@@ -471,17 +497,35 @@ export function kundliChartMarkup(
         else rest.push(entry);
       }
       for (const entry of rest) groups[groups[0].length <= groups[1].length ? 0 : 1].push(entry);
-      const { anchors } = splitHouse(i, luck ? [LUCK_LAYOUT[i].icon, LUCK_LAYOUT[i].sign, LUCK_LAYOUT[i].moon] : [HOUSE_ICONS[i], HOUSES[i].num]);
-      return groups.map((group, k) => placeLabels(group, i, anchors[k], 1)).join("");
+      const { anchors, vertical, at } = splitHouse(i, luck ? [LUCK_LAYOUT[i].icon, LUCK_LAYOUT[i].sign, LUCK_LAYOUT[i].moon] : [HOUSE_ICONS[i], HOUSES[i].num]);
+      return groups.map((group, k) => placeLabels(group, i, anchors[k], 1, vertical ? { at, side: k } : null)).join("");
     })
     .join("");
+
+  /**
+   * Zoomed: each current graha in a row of labels centered on fx, at
+   * height y, gets a figure as tall as the row's room in house i allows
+   * (within ICON_MIN..ICON_MAX of the font size) -- the house's width
+   * there, or just one half's in a left/right split house.
+   */
+  function withIcons(rowEntries: Label[], i: number, fx: number, y: number, half: { at: number; side: number } | null): Label[] {
+    const planets = rowEntries.filter((entry) => entry.planet && !entry.struck && planetBodyFor(entry.planet));
+    if (!zoom || !planets.length) return rowEntries;
+    let [lo, hi] = spanAt(HOUSE_POLYGONS[i], 1, (y - y0) / size);
+    if (half) [lo, hi] = half.side === 0 ? [lo, Math.min(hi, half.at)] : [Math.max(lo, half.at), hi];
+    const room = Number.isFinite(lo) && Number.isFinite(hi) ? Math.max(0, 2 * Math.min(fx - lo, hi - fx) * size * 0.85) : Infinity;
+    const rest = rowEntries.reduce((sum, entry) => sum + labelWidth(entry, fontSize, zoom), 0) + fontSize * 0.45 * (rowEntries.length - 1) + planets.length * fontSize * ICON_GAP;
+    const perHeight = planets.reduce((sum, entry) => sum + iconAspect(entry.planet!), 0);
+    const icon = Math.min(fontSize * ICON_MAX, Math.max(fontSize * ICON_MIN, (room - rest) / perHeight));
+    return rowEntries.map((entry) => (planets.includes(entry) ? { ...entry, icon } : entry));
+  }
 
   /**
    * Stacks `entries` centered on (fx, fy) in house i, `perRow` to a row --
    * the wide, shallow triangles (houses 2, 6, 8, 12) set two side by side;
    * the others, and each half of a split house, one per line.
    */
-  function placeLabels(entries: Label[], i: number, [fx, fy]: [number, number], perRow: number): string {
+  function placeLabels(entries: Label[], i: number, [fx, fy]: [number, number], perRow: number, half: { at: number; side: number } | null): string {
       // Zoomed pies stand a little taller than the text, so lines get more air.
       const lineHeight = fontSize * (zoom ? 1.8 : 1.08);
       // Never above the house's own icon when that sits over the labels.
@@ -491,7 +535,9 @@ export function kundliChartMarkup(
       for (let k = 0; k < entries.length; k += perRow) rows.push(entries.slice(k, k + perRow));
       const top = Math.max(y0 + fy * size - (rows.length * lineHeight) / 2 + fontSize * 0.05, belowIcon);
       return rows
-        .map((rowEntries, row) => {
+        .map((plainEntries, row) => {
+          const y = top + row * lineHeight;
+          const rowEntries = withIcons(plainEntries, i, fx, y + fontSize * 0.42, half);
           const widths = rowEntries.map((entry) => labelWidth(entry, fontSize, zoom));
           const gap = fontSize * 0.45;
           let x = x0 + fx * size - (widths.reduce((sum, w) => sum + w, 0) + gap * (widths.length - 1)) / 2;
@@ -499,11 +545,10 @@ export function kundliChartMarkup(
             .map((entry, k) => {
               const cx = x + widths[k] / 2;
               x += widths[k] + gap;
-              const y = top + row * lineHeight;
-              // The name's own center (not its pie's), for the move arrow and ring.
-              const nameCx = cx - stayWidth(entry, fontSize, zoom) / 2;
+              // The name's own center (not its figure's or pie's), for the move arrow and ring.
+              const nameCx = cx + (iconWidth(entry, fontSize) - stayWidth(entry, fontSize, zoom)) / 2;
               if (entry.planet) centers.set(`${entry.planet}:${entry.struck ? "was" : "now"}`, [nameCx, y + fontSize * 0.45]);
-              return devanagariLabelMarkup(entry, cx, y, fontSize, zoom);
+              return devanagariLabelMarkup(entry, cx, y, fontSize, zoom, `luck-body-${Math.round(x0)}-${iconCount++}`, moonIllumination);
             })
             .join("");
         })
