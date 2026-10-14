@@ -1,2 +1,6 @@
 /build/*
 !/build/.npmkeep
+
+# Firebase config: kept out of the public repo (its Google API key gets flagged by secret scanning).
+# Download it from Firebase console > Project settings > Your apps, into this folder.
+google-services.json
