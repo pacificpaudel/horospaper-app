@@ -174,3 +174,17 @@ body {
 .privacy-delete:disabled { opacity: 0.6; cursor: wait; }
 .privacy-delete-done { color: #1aff5c; }
 .privacy-delete-error { color: #ff8a8a; }
+/* The calendar icon in the full-screen Luck Chart (top-right, clear of the
+   drawn chart) and the card it opens: a topic for the Google Calendar event
+   made from the day's chart. */
+.luck-chart-calendar-button { position: absolute; top: max(12px, env(safe-area-inset-top)); right: 12px; display: inline-flex; align-items: center; justify-content: center; width: 42px; height: 42px; border: 1px solid rgba(247, 197, 106, 0.6); border-radius: 999px; background: rgba(11, 18, 32, 0.85); color: var(--gold); cursor: pointer; backdrop-filter: blur(6px); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); }
+.luck-chart-calendar-button:hover, .luck-chart-calendar-button:focus-visible { background: rgba(48, 40, 24, 0.92); outline: none; }
+.luck-chart-event { display: grid; gap: 0.6em; cursor: default; }
+.luck-chart-event label { color: #a9b1c4; font-size: 0.78em; letter-spacing: 0.08em; text-transform: uppercase; }
+.luck-chart-event input { width: 100%; padding: 0.55em 0.7em; border: 1px solid rgba(247, 197, 106, 0.45); border-radius: 8px; background: #05070f; color: #f3f5fa; font: inherit; font-weight: 600; }
+.luck-chart-event input:focus-visible { outline: 2px solid #f7c56a; outline-offset: 1px; }
+.luck-chart-event-note { margin: 0; color: #a9b1c4; font-size: 0.72em; font-weight: 600; line-height: 1.5; }
+.luck-chart-event-error { margin: 0; color: #ff9b9b; font-size: 0.75em; }
+.luck-chart-event-submit { justify-self: start; padding: 0.5em 1.2em; border: 1px solid rgba(247, 197, 106, 0.6); border-radius: 999px; background: rgba(247, 197, 106, 0.12); color: var(--gold); font: inherit; font-weight: 700; letter-spacing: 0.06em; cursor: pointer; }
+.luck-chart-event-submit:hover:not(:disabled), .luck-chart-event-submit:focus-visible { background: rgba(247, 197, 106, 0.22); outline: none; }
+.luck-chart-event-submit:disabled { opacity: 0.6; cursor: default; }

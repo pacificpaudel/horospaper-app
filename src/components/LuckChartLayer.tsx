@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getStoredGuestId } from "@/lib/client/guest";
 import type { LuckChartInfo } from "@/lib/image/gocharOverlay";
 import { KeepAwake } from "./KeepAwake";
@@ -96,10 +96,36 @@ function readInfo(res: Response): LuckChartInfo | null {
   }
 }
 
+/**
+ * A Google Calendar event for the chart's day, all-day, with the
+ * screenshot's URL in the description -- the event template URL takes no
+ * attachments, so a link is the only way the picture travels with it.
+ */
+function googleCalendarUrl(topic: string, date: string, imageUrl: string): string {
+  const end = new Date(`${date}T00:00:00Z`);
+  end.setUTCDate(end.getUTCDate() + 1);
+  const compact = (iso: string) => iso.replace(/-/g, "");
+  const params = new URLSearchParams({
+    action: "TEMPLATE",
+    text: topic,
+    dates: `${compact(date)}/${compact(end.toISOString().slice(0, 10))}`,
+    details: `Luck Chart for ${date}\n\nScreenshot:\n${imageUrl}`,
+  });
+  return `https://calendar.google.com/calendar/render?${params}`;
+}
+
 function LuckChartView({ date, isPreview, onClose }: { date: string; isPreview: boolean; onClose: () => void }) {
   const [chart, setChart] = useState<ChartImage | null>(null);
   const [failed, setFailed] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
+  const [eventOpen, setEventOpen] = useState(false);
+  const [topic, setTopic] = useState("");
+  const [eventBusy, setEventBusy] = useState(false);
+  const [eventFailed, setEventFailed] = useState(false);
+  // The upload of this day's screenshot, started as soon as the event card
+  // opens so the Google Calendar tab can be opened straight from the click
+  // that submits it (an await in between would get it blocked as a popup).
+  const shotRef = useRef<Promise<string> | null>(null);
   const [viewSize, setViewSize] = useState<{ w: number; h: number } | null>(null);
   const viewRef = useRef<HTMLDivElement>(null);
   const objectUrlRef = useRef<string | null>(null);
@@ -152,15 +178,68 @@ function LuckChartView({ date, isPreview, onClose }: { date: string; isPreview: 
   }, [date, isPreview]);
 
   useEffect(() => {
-    // Escape closes the Agreement & Conflict details first, then the view.
+    // Escape closes whichever card is up first, then the view itself.
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       if (infoOpen) setInfoOpen(false);
+      else if (eventOpen) setEventOpen(false);
       else onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, infoOpen]);
+  }, [onClose, infoOpen, eventOpen]);
+
+  // A new day is a new screenshot.
+  useEffect(() => {
+    shotRef.current = null;
+  }, [date]);
+
+  /** Renders this day's chart to a stored PNG and resolves its public URL. */
+  const uploadShot = useCallback(() => {
+    if (!shotRef.current) {
+      const side = (n: number) => Math.min(2400, Math.max(200, Math.round(n)));
+      const guestId = getStoredGuestId();
+      shotRef.current = fetch("/api/horoscope/luck-chart/share", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(guestId ? { "x-guest-id": guestId } : {}) },
+        body: JSON.stringify({ date, w: side(window.innerWidth), h: side(window.innerHeight), preview: isPreview }),
+      })
+        .then((res) => (res.ok ? (res.json() as Promise<{ imageUrl: string }>) : Promise.reject(new Error(String(res.status)))))
+        .then(({ imageUrl }) => imageUrl)
+        .catch((err) => {
+          shotRef.current = null; // so the next try isn't stuck on this failure
+          throw err;
+        });
+    }
+    return shotRef.current;
+  }, [date, isPreview]);
+
+  const openEventCard = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEventFailed(false);
+    setEventOpen(true);
+    void uploadShot().catch(() => setEventFailed(true));
+  };
+
+  // The event is never made without the screenshot: a failed upload keeps
+  // the card open with its error rather than opening a pictureless event.
+  const createEvent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (eventBusy) return;
+    setEventBusy(true);
+    setEventFailed(false);
+    try {
+      const imageUrl = await uploadShot();
+      window.open(googleCalendarUrl(topic.trim() || `Luck Chart ${date}`, date, imageUrl), "_blank", "noopener");
+      setEventOpen(false);
+      setTopic("");
+    } catch {
+      setEventFailed(true);
+    } finally {
+      setEventBusy(false);
+    }
+  };
 
   // The drawn "i", mapped from the SVG's pixels to where object-fit:
   // contain shows the image in this view.
@@ -211,6 +290,53 @@ function LuckChartView({ date, isPreview, onClose }: { date: string; isPreview: 
             setInfoOpen(true);
           }}
         />
+      )}
+      {chart && (
+        <button
+          type="button"
+          className="luck-chart-calendar-button"
+          aria-label="Add today's Luck Chart to Google Calendar"
+          title="Add to Google Calendar"
+          onClick={openEventCard}
+        >
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+            <rect x="3" y="5" width="18" height="16" rx="2.5" />
+            <path d="M3 10h18M8 3v4M16 3v4M12 13v5M9.5 15.5h5" />
+          </svg>
+        </button>
+      )}
+      {eventOpen && (
+        <div
+          className="luck-chart-info-backdrop"
+          onClick={(e) => {
+            e.stopPropagation();
+            setEventOpen(false);
+          }}
+        >
+          <form className="luck-chart-info luck-chart-event" aria-label="Add to Google Calendar" onClick={(e) => e.stopPropagation()} onSubmit={createEvent}>
+            <button type="button" className="luck-chart-info-close" aria-label="Close" onClick={() => setEventOpen(false)}>
+              ×
+            </button>
+            <h2>Add to Google Calendar</h2>
+            <label htmlFor="luck-chart-event-topic">Topic of event</label>
+            <input
+              id="luck-chart-event-topic"
+              type="text"
+              value={topic}
+              autoFocus
+              maxLength={120}
+              placeholder={`Luck Chart ${date}`}
+              onChange={(e) => setTopic(e.target.value)}
+            />
+            <p className="luck-chart-event-note">
+              An all-day event on {date}. Today&apos;s Luck Chart screenshot goes in the event&apos;s description as a link anyone invited can open.
+            </p>
+            {eventFailed && <p className="luck-chart-event-error">Couldn&apos;t prepare the screenshot, so no event was made. Try again.</p>}
+            <button type="submit" className="luck-chart-event-submit" disabled={eventBusy}>
+              {eventBusy ? "Preparing screenshot…" : "Create event"}
+            </button>
+          </form>
+        </div>
       )}
       {infoOpen && chart?.info && (
         <div
