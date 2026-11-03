@@ -185,6 +185,11 @@ body {
 .luck-chart-event input:focus-visible { outline: 2px solid #f7c56a; outline-offset: 1px; }
 .luck-chart-event-note { margin: 0; color: #a9b1c4; font-size: 0.72em; font-weight: 600; line-height: 1.5; }
 .luck-chart-event-error { margin: 0; color: #ff9b9b; font-size: 0.75em; }
-.luck-chart-event-submit { justify-self: start; padding: 0.5em 1.2em; border: 1px solid rgba(247, 197, 106, 0.6); border-radius: 999px; background: rgba(247, 197, 106, 0.12); color: var(--gold); font: inherit; font-weight: 700; letter-spacing: 0.06em; cursor: pointer; }
+.luck-chart-event-submit { justify-self: start; display: inline-block; text-decoration: none; padding: 0.5em 1.2em; border: 1px solid rgba(247, 197, 106, 0.6); border-radius: 999px; background: rgba(247, 197, 106, 0.12); color: var(--gold); font: inherit; font-weight: 700; letter-spacing: 0.06em; cursor: pointer; }
 .luck-chart-event-submit:hover:not(:disabled), .luck-chart-event-submit:focus-visible { background: rgba(247, 197, 106, 0.22); outline: none; }
 .luck-chart-event-submit:disabled { opacity: 0.6; cursor: default; }
+.luck-chart-event-link { color: #a9b1c4; font-size: 0.72em; font-weight: 600; text-decoration: underline; }
+.luck-chart-event-link:hover { color: var(--gold); }
+/* Why a Luck Chart calendar event didn't happen (LuckChartEventNotice). */
+.luck-chart-event-notice { display: flex; align-items: center; justify-content: center; gap: 0.6rem; margin: 0.75rem auto 0; max-width: 44rem; padding: 0.5rem 0.9rem; border: 1px solid rgba(247, 197, 106, 0.4); border-radius: 10px; background: rgba(247, 197, 106, 0.08); color: #d7dce8; font-size: 0.8rem; text-align: center; }
+.luck-chart-event-notice button { border: 0; background: none; color: #a9b1c4; font-size: 1.2rem; line-height: 1; cursor: pointer; }

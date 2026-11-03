@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { toZonedTime } from "date-fns-tz";
 import Image from "next/image";
 import { NavBar } from "@/components/NavBar";
@@ -12,6 +12,7 @@ import { apiFetch, ApiError } from "@/lib/client/api";
 import { BirthProfileDTO, HoroscopeDTO } from "@/types/api";
 import { setLastRefreshed } from "@/lib/client/refreshStatus";
 import { LuckChartLayer } from "@/components/LuckChartLayer";
+import { LuckChartEventNotice } from "@/components/LuckChartEventNotice";
 import { loadFormDraft, saveFormDraft } from "@/lib/client/formDraft";
 
 // The two wallpaper shapes: Mobile 9:16 (the default) and Desktop 16:9.
@@ -244,6 +245,10 @@ export default function HomePage() {
           onViewChange={setViewMode}
         />
         <main className="output-canvas mx-auto w-full max-w-6xl px-5 md:px-8">
+          {/* Why a Luck Chart calendar event didn't happen, if Google sent the browser back here. */}
+          <Suspense fallback={null}>
+            <LuckChartEventNotice />
+          </Suspense>
           <HoroscopeArtwork key={imageUrl} imageUrl={imageUrl} isMobile={isMobile} luckScore={luckScore} frameRef={artworkRef}>
             <LuckChartLayer canvas={canvas} hasChart={hasChart} date={horoscope.generationDate} isPreview={horoscope.isPreview} open={luckChartOpen} onOpenChange={setLuckChartOpen} />
           </HoroscopeArtwork>

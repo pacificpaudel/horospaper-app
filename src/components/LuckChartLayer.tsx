@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getStoredGuestId } from "@/lib/client/guest";
 import type { LuckChartInfo } from "@/lib/image/gocharOverlay";
 import { KeepAwake } from "./KeepAwake";
@@ -96,23 +96,8 @@ function readInfo(res: Response): LuckChartInfo | null {
   }
 }
 
-/**
- * A Google Calendar event for the chart's day, all-day, with the
- * screenshot's URL in the description -- the event template URL takes no
- * attachments, so a link is the only way the picture travels with it.
- */
-function googleCalendarUrl(topic: string, date: string, imageUrl: string): string {
-  const end = new Date(`${date}T00:00:00Z`);
-  end.setUTCDate(end.getUTCDate() + 1);
-  const compact = (iso: string) => iso.replace(/-/g, "");
-  const params = new URLSearchParams({
-    action: "TEMPLATE",
-    text: topic,
-    dates: `${compact(date)}/${compact(end.toISOString().slice(0, 10))}`,
-    details: `Luck Chart for ${date}\n\nScreenshot:\n${imageUrl}`,
-  });
-  return `https://calendar.google.com/calendar/render?${params}`;
-}
+/** What the server did with the event: made it, or handed back a pre-filled one to make. */
+type EventResult = { kind: "created"; eventUrl: string; fileUrl: string } | { kind: "template"; templateUrl: string; imageUrl: string };
 
 function LuckChartView({ date, isPreview, onClose }: { date: string; isPreview: boolean; onClose: () => void }) {
   const [chart, setChart] = useState<ChartImage | null>(null);
@@ -121,11 +106,8 @@ function LuckChartView({ date, isPreview, onClose }: { date: string; isPreview: 
   const [eventOpen, setEventOpen] = useState(false);
   const [topic, setTopic] = useState("");
   const [eventBusy, setEventBusy] = useState(false);
-  const [eventFailed, setEventFailed] = useState(false);
-  // The upload of this day's screenshot, started as soon as the event card
-  // opens so the Google Calendar tab can be opened straight from the click
-  // that submits it (an await in between would get it blocked as a popup).
-  const shotRef = useRef<Promise<string> | null>(null);
+  const [eventError, setEventError] = useState(false);
+  const [eventResult, setEventResult] = useState<EventResult | null>(null);
   const [viewSize, setViewSize] = useState<{ w: number; h: number } | null>(null);
   const viewRef = useRef<HTMLDivElement>(null);
   const objectUrlRef = useRef<string | null>(null);
@@ -189,53 +171,44 @@ function LuckChartView({ date, isPreview, onClose }: { date: string; isPreview: 
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose, infoOpen, eventOpen]);
 
-  // A new day is a new screenshot.
-  useEffect(() => {
-    shotRef.current = null;
-  }, [date]);
-
-  /** Renders this day's chart to a stored PNG and resolves its public URL. */
-  const uploadShot = useCallback(() => {
-    if (!shotRef.current) {
-      const side = (n: number) => Math.min(2400, Math.max(200, Math.round(n)));
-      const guestId = getStoredGuestId();
-      shotRef.current = fetch("/api/horoscope/luck-chart/share", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...(guestId ? { "x-guest-id": guestId } : {}) },
-        body: JSON.stringify({ date, w: side(window.innerWidth), h: side(window.innerHeight), preview: isPreview }),
-      })
-        .then((res) => (res.ok ? (res.json() as Promise<{ imageUrl: string }>) : Promise.reject(new Error(String(res.status)))))
-        .then(({ imageUrl }) => imageUrl)
-        .catch((err) => {
-          shotRef.current = null; // so the next try isn't stuck on this failure
-          throw err;
-        });
-    }
-    return shotRef.current;
-  }, [date, isPreview]);
-
+  // Each open starts clean -- including after a new day swapped the chart.
   const openEventCard = (e: React.MouseEvent) => {
     e.stopPropagation();
-    setEventFailed(false);
+    setEventError(false);
+    setEventResult(null);
     setEventOpen(true);
-    void uploadShot().catch(() => setEventFailed(true));
   };
 
-  // The event is never made without the screenshot: a failed upload keeps
-  // the card open with its error rather than opening a pictureless event.
+  /**
+   * Hands the topic to the server, which draws the chart, keeps a copy in
+   * the user's Drive (Horosevents) and makes the all-day event with that
+   * copy attached. A guest who hasn't connected Google yet is sent to
+   * consent, which finishes this same event and lands on it -- so the
+   * event is never made without its screenshot either way.
+   */
   const createEvent = async (e: React.FormEvent) => {
     e.preventDefault();
     e.stopPropagation();
     if (eventBusy) return;
     setEventBusy(true);
-    setEventFailed(false);
+    setEventError(false);
     try {
-      const imageUrl = await uploadShot();
-      window.open(googleCalendarUrl(topic.trim() || `Luck Chart ${date}`, date, imageUrl), "_blank", "noopener");
-      setEventOpen(false);
-      setTopic("");
+      const side = (n: number) => Math.min(2400, Math.max(200, Math.round(n)));
+      const guestId = getStoredGuestId();
+      const res = await fetch("/api/horoscope/luck-chart/event", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(guestId ? { "x-guest-id": guestId } : {}) },
+        body: JSON.stringify({ date, topic: topic.trim(), w: side(window.innerWidth), h: side(window.innerHeight), preview: isPreview }),
+      });
+      const data = (await res.json().catch(() => null)) as (EventResult & { needsAuth?: boolean; authUrl?: string }) | null;
+      if (res.status === 401 && data?.needsAuth && data.authUrl) {
+        window.location.href = data.authUrl;
+        return;
+      }
+      if (!res.ok || !data?.kind) throw new Error(String(res.status));
+      setEventResult(data);
     } catch {
-      setEventFailed(true);
+      setEventError(true);
     } finally {
       setEventBusy(false);
     }
@@ -318,23 +291,52 @@ function LuckChartView({ date, isPreview, onClose }: { date: string; isPreview: 
               ×
             </button>
             <h2>Add to Google Calendar</h2>
-            <label htmlFor="luck-chart-event-topic">Topic of event</label>
-            <input
-              id="luck-chart-event-topic"
-              type="text"
-              value={topic}
-              autoFocus
-              maxLength={120}
-              placeholder={`Luck Chart ${date}`}
-              onChange={(e) => setTopic(e.target.value)}
-            />
-            <p className="luck-chart-event-note">
-              An all-day event on {date}. Today&apos;s Luck Chart screenshot goes in the event&apos;s description as a link anyone invited can open.
-            </p>
-            {eventFailed && <p className="luck-chart-event-error">Couldn&apos;t prepare the screenshot, so no event was made. Try again.</p>}
-            <button type="submit" className="luck-chart-event-submit" disabled={eventBusy}>
-              {eventBusy ? "Preparing screenshot…" : "Create event"}
-            </button>
+            {eventResult?.kind === "created" ? (
+              <>
+                <p className="luck-chart-event-note">
+                  Event created on {date}, with the Luck Chart screenshot attached from your Drive folder <strong>Horosevents</strong>.
+                </p>
+                <a className="luck-chart-event-submit" href={eventResult.eventUrl} target="_blank" rel="noopener noreferrer">
+                  Open the event
+                </a>
+                <a className="luck-chart-event-link" href={eventResult.fileUrl} target="_blank" rel="noopener noreferrer">
+                  View the screenshot in Drive
+                </a>
+              </>
+            ) : eventResult?.kind === "template" ? (
+              <>
+                <p className="luck-chart-event-note">
+                  Google isn&apos;t connected, so the screenshot is stored here instead and its link is already in the event&apos;s description — open this to save the event.
+                </p>
+                <a className="luck-chart-event-submit" href={eventResult.templateUrl} target="_blank" rel="noopener noreferrer">
+                  Open Google Calendar
+                </a>
+                <a className="luck-chart-event-link" href={eventResult.imageUrl} target="_blank" rel="noopener noreferrer">
+                  View the screenshot
+                </a>
+              </>
+            ) : (
+              <>
+                <label htmlFor="luck-chart-event-topic">Topic of event</label>
+                <input
+                  id="luck-chart-event-topic"
+                  type="text"
+                  value={topic}
+                  autoFocus
+                  maxLength={120}
+                  placeholder={`Luck Chart ${date}`}
+                  onChange={(e) => setTopic(e.target.value)}
+                />
+                <p className="luck-chart-event-note">
+                  An all-day event on {date}. The Luck Chart screenshot is saved to <strong>Horosevents</strong> in your Google Drive and attached to the event, so it stays there after this app cleans up its own
+                  files.
+                </p>
+                {eventError && <p className="luck-chart-event-error">Couldn&apos;t make the event, so none was created. Try again.</p>}
+                <button type="submit" className="luck-chart-event-submit" disabled={eventBusy}>
+                  {eventBusy ? "Saving the screenshot…" : "Create event"}
+                </button>
+              </>
+            )}
           </form>
         </div>
       )}

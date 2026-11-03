@@ -47,6 +47,10 @@ steps fall back to clearly-logged MOCK providers when `ANTHROPIC_API_KEY`/`OPENA
 
 - **LLM**: set `ANTHROPIC_API_KEY` (recommended) or `OPENAI_API_KEY`, and `LLM_PROVIDER`.
 - **Images**: set `IMAGE_PROVIDER=openai` and `OPENAI_API_KEY`.
+- **Calendar events from the Luck Chart**: set `GOOGLE_OAUTH_CLIENT_ID`/`GOOGLE_OAUTH_CLIENT_SECRET`
+  (Drive + Calendar APIs enabled, scopes `drive.file` and `calendar.events`). The chart's screenshot is
+  copied into a `Horosevents` folder in the user's Drive and attached to an all-day event; without the
+  keys the icon falls back to Google's pre-filled event page linking a stored screenshot.
 
 See `.env.example` for the full list.
 
