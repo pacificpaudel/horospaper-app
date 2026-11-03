@@ -5,6 +5,7 @@ import "./globals.css";
 import { Footer } from "@/components/Footer";
 import { ServiceWorker } from "@/components/ServiceWorker";
 import { NativeApp } from "@/components/NativeApp";
+import { Analytics } from "@vercel/analytics/next";
 
 const geistSans = Geist({
   variable: "--font-sans",
@@ -42,6 +43,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <Footer />
         <ServiceWorker />
         <NativeApp />
+        {/* Vercel Web Analytics: pageviews only, no cookies. Inert outside Vercel. */}
+        <Analytics />
       </body>
     </html>
   );
