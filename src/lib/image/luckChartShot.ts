@@ -40,8 +40,7 @@ function symptomsFooter(width: number, y: number, ids: readonly string[], rating
     const fill = rating === "right" ? "#14532d" : rating === "wrong" ? "#7f1d1d" : "#1f2937";
     return `<rect x="${width - pad - badgeWidth}" y="${rowY - rowHeight * 0.34}" width="${badgeWidth}" height="${rowHeight * 0.68}" rx="${rowHeight * 0.34}" fill="${fill}" stroke="${color}" stroke-width="1"/><text x="${width - pad - badgeWidth / 2}" y="${rowY}" text-anchor="middle" dominant-baseline="middle" font-family="Arial, sans-serif" font-size="${rowSize * 0.75}" font-weight="700" letter-spacing="0.5" fill="${color}">${status}</text>`;
   });
-  const labels = symptoms.map((id, index) => {
-    const symptom = PHYSICAL_SYMPTOMS.find((item) => item.id === id)!;
+  const labels = symptoms.map(({ symptom }, index) => {
     const rowY = y + pad + headerSize * 1.8 + index * rowHeight;
     return `<text x="${pad}" y="${rowY}" dominant-baseline="middle" font-family="Arial, sans-serif" font-size="${rowSize}" fill="#f3f5fa">${escapeXml(symptom.figure)}  ${escapeXml(`${symptom.body} · ${symptom.indicator}`)}</text>`;
   });
