@@ -4,6 +4,7 @@ import { deleteHoroscopesForUser } from "@/lib/horoscope";
 import { deleteUsageForUser } from "@/lib/usage";
 import { isRegisteredDevice, unregisterDevice } from "@/lib/devices";
 import { BirthProfile } from "@/types/models";
+import { deletePhysicalSymptomsForUser } from "@/lib/physicalSymptomLog";
 
 export function profileKey(userId: string): string {
   return `profile:${userId}`;
@@ -40,5 +41,6 @@ export async function deleteUserData(userId: string): Promise<void> {
     unregisterDevice(userId),
     deleteHoroscopesForUser(userId),
     deleteUsageForUser(userId),
+    deletePhysicalSymptomsForUser(userId),
   ]);
 }

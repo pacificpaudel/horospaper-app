@@ -2,10 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import { getStoredGuestId } from "@/lib/client/guest";
+import { apiFetch } from "@/lib/client/api";
 import type { LuckChartInfo } from "@/lib/image/gocharOverlay";
 import { KeepAwake } from "./KeepAwake";
 import { luckMeterPanel } from "@/lib/image/luckMeterGeometry";
 import { PHYSICAL_SYMPTOMS, type PhysicalSymptomId, type PhysicalSymptomRatings, type SymptomRating } from "@/lib/physicalSymptoms";
+import type { DailyPhysicalSymptomLog } from "@/lib/physicalSymptomLog";
 
 /**
  * The "Luck Chart" button over a wallpaper image: centered just above the
@@ -111,6 +113,9 @@ function LuckChartView({ date, isPreview, onClose }: { date: string; isPreview: 
   const [draftSymptoms, setDraftSymptoms] = useState<PhysicalSymptomId[]>([]);
   const [draftRatings, setDraftRatings] = useState<PhysicalSymptomRatings>({});
   const [physicalOpen, setPhysicalOpen] = useState(false);
+  const [symptomsLoading, setSymptomsLoading] = useState(true);
+  const [symptomsSaving, setSymptomsSaving] = useState(false);
+  const [symptomsError, setSymptomsError] = useState<string | null>(null);
   const [eventBusy, setEventBusy] = useState(false);
   const [eventError, setEventError] = useState(false);
   const [eventResult, setEventResult] = useState<EventResult | null>(null);
@@ -119,12 +124,48 @@ function LuckChartView({ date, isPreview, onClose }: { date: string; isPreview: 
   const objectUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     setSymptoms([]);
     setSymptomRatings({});
     setDraftSymptoms([]);
     setDraftRatings({});
     setPhysicalOpen(false);
+    setSymptomsLoading(true);
+    setSymptomsError(null);
+    apiFetch<{ log: DailyPhysicalSymptomLog | null }>(`/api/horoscope/luck-chart/symptoms?date=${encodeURIComponent(date)}`)
+      .then(({ log }) => {
+        if (!cancelled && log) {
+          setSymptoms(log.symptoms);
+          setSymptomRatings(log.ratings ?? {});
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setSymptomsError("Could not load this day’s saved body signs.");
+      })
+      .finally(() => {
+        if (!cancelled) setSymptomsLoading(false);
+      });
+    return () => { cancelled = true; };
   }, [date]);
+
+  const savePhysicalSymptoms = async () => {
+    if (symptomsSaving || symptomsLoading) return;
+    setSymptomsSaving(true);
+    setSymptomsError(null);
+    try {
+      const { log } = await apiFetch<{ log: DailyPhysicalSymptomLog }>("/api/horoscope/luck-chart/symptoms", {
+        method: "PUT",
+        body: JSON.stringify({ date, symptoms: draftSymptoms, ratings: draftRatings }),
+      });
+      setSymptoms(log.symptoms);
+      setSymptomRatings(log.ratings ?? {});
+      setPhysicalOpen(false);
+    } catch {
+      setSymptomsError("Could not save body signs. Please try again.");
+    } finally {
+      setSymptomsSaving(false);
+    }
+  };
 
   useEffect(() => {
     const el = viewRef.current;
@@ -285,6 +326,7 @@ function LuckChartView({ date, isPreview, onClose }: { date: string; isPreview: 
           className="luck-chart-calendar-button"
           aria-label="Add today's Luck Chart to Google Calendar"
           title="Add to Google Calendar"
+          disabled={symptomsLoading || symptomsSaving}
           onClick={openEventCard}
         >
           <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
@@ -301,7 +343,8 @@ function LuckChartView({ date, isPreview, onClose }: { date: string; isPreview: 
             aria-expanded={physicalOpen}
             aria-controls="luck-chart-physical-menu"
             aria-label="Traditional Hindu body signs"
-            title="Traditional Hindu body signs"
+            title={symptomsLoading ? "Loading saved body signs…" : "Traditional Hindu body signs"}
+            disabled={symptomsLoading || symptomsSaving}
             onClick={() => {
               if (!physicalOpen) {
                 setDraftSymptoms(symptoms);
@@ -359,7 +402,8 @@ function LuckChartView({ date, isPreview, onClose }: { date: string; isPreview: 
                   );
                 })}
               </div>
-              <button type="button" className="luck-chart-physical-save" onClick={() => { setSymptoms(draftSymptoms); setSymptomRatings(draftRatings); setPhysicalOpen(false); }}>Save</button>
+              {symptomsError && <p className="luck-chart-physical-error" role="alert">{symptomsError}</p>}
+              <button type="button" className="luck-chart-physical-save" disabled={symptomsSaving || symptomsLoading} onClick={savePhysicalSymptoms}>{symptomsSaving ? "Saving…" : "Save"}</button>
             </section>
           )}
           {symptoms.length > 0 && (
