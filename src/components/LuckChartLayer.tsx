@@ -296,12 +296,21 @@ function LuckChartView({ date, isPreview, onClose }: { date: string; isPreview: 
             className="luck-chart-physical-toggle"
             aria-expanded={physicalOpen}
             aria-controls="luck-chart-physical-menu"
+            aria-label="Traditional Hindu body signs"
+            title="Traditional Hindu body signs"
             onClick={() => {
               if (!physicalOpen) setDraftSymptoms(symptoms);
               setPhysicalOpen((open) => !open);
             }}
           >
-            <span aria-hidden="true">🧍</span> Body signs <span aria-hidden="true">{physicalOpen ? "▴" : "▾"}</span>
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <ellipse cx="12" cy="12" rx="9" ry="3.7" transform="rotate(-32 12 12)" />
+              <ellipse cx="12" cy="12" rx="6.4" ry="2.4" transform="rotate(28 12 12)" />
+              <path d="M8.3 13.8c1.2-2 3.3-3.6 6.1-4.4M10 9.1c2 .8 3.8 2.4 5 4.8" />
+              <circle cx="12" cy="12" r="1.35" fill="currentColor" stroke="none" />
+              <circle cx="4" cy="5" r=".7" fill="currentColor" stroke="none" />
+              <circle cx="19.5" cy="18.7" r=".7" fill="currentColor" stroke="none" />
+            </svg>
           </button>
           {physicalOpen && (
             <section className="luck-chart-physical-menu" id="luck-chart-physical-menu" aria-label="Choose traditional body signs">
@@ -333,7 +342,8 @@ function LuckChartView({ date, isPreview, onClose }: { date: string; isPreview: 
             <div className="luck-chart-physical-column" aria-label={`${symptoms.length} physical symptoms selected`}>
               {symptoms.map((id) => {
                 const symptom = PHYSICAL_SYMPTOMS.find((item) => item.id === id)!;
-                return <span key={id} title={`${symptom.indicator}: ${symptom.meaning}`}>{symptom.figure}</span>;
+                const side = symptom.body.startsWith("L ") ? "L" : symptom.body.startsWith("R ") ? "R" : "";
+                return <span key={id} title={`${symptom.indicator}: ${symptom.meaning}`}>{side && <b>{side}</b>}{symptom.figure}</span>;
               })}
             </div>
           )}
