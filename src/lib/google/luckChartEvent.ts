@@ -53,7 +53,7 @@ async function storeShot(pending: PendingEvent, png: Buffer, origin: string): Pr
  * never handed an event without its screenshot.
  */
 export async function createLuckChartEvent(token: string | null, pending: PendingEvent, origin: string): Promise<EventResult> {
-  const png = await renderLuckChartPng(pending.userId, pending.date, pending.w, pending.h, pending.preview);
+  const png = await renderLuckChartPng(pending.userId, pending.date, pending.w, pending.h, pending.preview, pending.symptoms ?? [], pending.symptomRatings);
   if (!png) throw new NoLuckChartError(`No Luck Chart for ${pending.date}`);
   const shot = await storeShot(pending, png, origin);
 

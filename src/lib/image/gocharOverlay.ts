@@ -517,7 +517,8 @@ export async function buildLuckChartViewSvg(
   height: number,
   kundli: KundliData,
   onDate: string,
-  panchang: DailyReading["panchang"]
+  panchang: DailyReading["panchang"],
+  footer?: { height: number; markup: string }
 ): Promise<{ svg: string; info: LuckChartInfo | null }> {
   const shapeAll = (texts: [string, string][]) => Promise.all(texts.map(async ([key, text]) => [key, await shapeDevanagariText(text)] as const));
   const moonSign = kundli.planets.find((planet) => planet.name === "Moon")?.sign;
@@ -536,7 +537,8 @@ export async function buildLuckChartViewSvg(
     nepaliReasons: Object.fromEntries(reasons),
     moonSignNe,
   });
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="${width}" height="${height}" fill="#05070f" />${markup}</svg>`;
+  const svgHeight = height + (footer?.height ?? 0);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${svgHeight}" viewBox="0 0 ${width} ${svgHeight}"><rect width="${width}" height="${height}" fill="#05070f" />${markup}${footer?.markup ?? ""}</svg>`;
   if (!layout.analysis || moonSign === undefined) return { svg, info: null };
 
   // Today's house from the natal Moon for each graha, as buildGocharMarkup judges them.
