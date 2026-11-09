@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { NextRequest } from "next/server";
 import { redis } from "@/lib/redis";
+import type { PhysicalSymptomRatings } from "@/lib/physicalSymptoms";
 
 // Just enough to put one picture in one folder and make one event: the
 // app can only ever touch files it created itself (drive.file), and can't
@@ -30,6 +31,7 @@ export interface PendingEvent {
   date: string;
   topic: string;
   symptoms: string[];
+  symptomRatings: PhysicalSymptomRatings;
   w: number;
   h: number;
   preview: boolean;

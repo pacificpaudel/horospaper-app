@@ -5,7 +5,7 @@ import { getStoredGuestId } from "@/lib/client/guest";
 import type { LuckChartInfo } from "@/lib/image/gocharOverlay";
 import { KeepAwake } from "./KeepAwake";
 import { luckMeterPanel } from "@/lib/image/luckMeterGeometry";
-import { PHYSICAL_SYMPTOMS, type PhysicalSymptomId } from "@/lib/physicalSymptoms";
+import { PHYSICAL_SYMPTOMS, type PhysicalSymptomId, type PhysicalSymptomRatings, type SymptomRating } from "@/lib/physicalSymptoms";
 
 /**
  * The "Luck Chart" button over a wallpaper image: centered just above the
@@ -107,7 +107,9 @@ function LuckChartView({ date, isPreview, onClose }: { date: string; isPreview: 
   const [eventOpen, setEventOpen] = useState(false);
   const [topic, setTopic] = useState("");
   const [symptoms, setSymptoms] = useState<PhysicalSymptomId[]>([]);
+  const [symptomRatings, setSymptomRatings] = useState<PhysicalSymptomRatings>({});
   const [draftSymptoms, setDraftSymptoms] = useState<PhysicalSymptomId[]>([]);
+  const [draftRatings, setDraftRatings] = useState<PhysicalSymptomRatings>({});
   const [physicalOpen, setPhysicalOpen] = useState(false);
   const [eventBusy, setEventBusy] = useState(false);
   const [eventError, setEventError] = useState(false);
@@ -118,7 +120,9 @@ function LuckChartView({ date, isPreview, onClose }: { date: string; isPreview: 
 
   useEffect(() => {
     setSymptoms([]);
+    setSymptomRatings({});
     setDraftSymptoms([]);
+    setDraftRatings({});
     setPhysicalOpen(false);
   }, [date]);
 
@@ -209,7 +213,7 @@ function LuckChartView({ date, isPreview, onClose }: { date: string; isPreview: 
       const res = await fetch("/api/horoscope/luck-chart/event", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(guestId ? { "x-guest-id": guestId } : {}) },
-        body: JSON.stringify({ date, topic: topic.trim(), symptoms, w: side(window.innerWidth), h: side(window.innerHeight), preview: isPreview }),
+        body: JSON.stringify({ date, topic: topic.trim(), symptoms, symptomRatings, w: side(window.innerWidth), h: side(window.innerHeight), preview: isPreview }),
       });
       const data = (await res.json().catch(() => null)) as (EventResult & { needsAuth?: boolean; authUrl?: string }) | null;
       if (res.status === 401 && data?.needsAuth && data.authUrl) {
@@ -299,7 +303,10 @@ function LuckChartView({ date, isPreview, onClose }: { date: string; isPreview: 
             aria-label="Traditional Hindu body signs"
             title="Traditional Hindu body signs"
             onClick={() => {
-              if (!physicalOpen) setDraftSymptoms(symptoms);
+              if (!physicalOpen) {
+                setDraftSymptoms(symptoms);
+                setDraftRatings(symptomRatings);
+              }
               setPhysicalOpen((open) => !open);
             }}
           >
@@ -321,21 +328,38 @@ function LuckChartView({ date, isPreview, onClose }: { date: string; isPreview: 
               <div className="luck-chart-physical-options">
                 {PHYSICAL_SYMPTOMS.map((symptom) => {
                   const checked = draftSymptoms.includes(symptom.id);
+                  const chooseRating = (rating: SymptomRating) => setDraftRatings((current) => ({ ...current, [symptom.id]: rating }));
                   return (
-                    <label key={symptom.id} className="luck-chart-physical-option">
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        disabled={!checked && draftSymptoms.length >= 3}
-                        onChange={() => setDraftSymptoms((current) => checked ? current.filter((id) => id !== symptom.id) : current.length < 3 ? [...current, symptom.id] : current)}
-                      />
-                      <span className="luck-chart-physical-option-figure" aria-hidden="true">{symptom.figure}</span>
-                      <span><strong>{symptom.body} · {symptom.indicator}</strong><small>{symptom.meaning}</small></span>
-                    </label>
+                    <div key={symptom.id} className="luck-chart-physical-option-wrap">
+                      <label className="luck-chart-physical-option">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={!checked && draftSymptoms.length >= 3}
+                          onChange={() => {
+                            if (checked) {
+                              setDraftSymptoms((current) => current.filter((id) => id !== symptom.id));
+                              setDraftRatings((current) => { const next = { ...current }; delete next[symptom.id]; return next; });
+                            } else if (draftSymptoms.length < 3) {
+                              setDraftSymptoms((current) => [...current, symptom.id]);
+                            }
+                          }}
+                        />
+                        <span className="luck-chart-physical-option-figure" aria-hidden="true">{symptom.figure}</span>
+                        <span><strong>{symptom.body} · {symptom.indicator}</strong><small>{symptom.meaning}</small></span>
+                      </label>
+                      {checked && (
+                        <div className="luck-chart-physical-rating" role="group" aria-label={`Did ${symptom.indicator} match an event?`}>
+                          <span>Match?</span>
+                          <button type="button" className={draftRatings[symptom.id] === "right" ? "is-selected" : ""} aria-pressed={draftRatings[symptom.id] === "right"} onClick={() => chooseRating("right")}>Right</button>
+                          <button type="button" className={draftRatings[symptom.id] === "wrong" ? "is-selected" : ""} aria-pressed={draftRatings[symptom.id] === "wrong"} onClick={() => chooseRating("wrong")}>Wrong</button>
+                        </div>
+                      )}
+                    </div>
                   );
                 })}
               </div>
-              <button type="button" className="luck-chart-physical-save" onClick={() => { setSymptoms(draftSymptoms); setPhysicalOpen(false); }}>Save</button>
+              <button type="button" className="luck-chart-physical-save" onClick={() => { setSymptoms(draftSymptoms); setSymptomRatings(draftRatings); setPhysicalOpen(false); }}>Save</button>
             </section>
           )}
           {symptoms.length > 0 && (
@@ -343,7 +367,9 @@ function LuckChartView({ date, isPreview, onClose }: { date: string; isPreview: 
               {symptoms.map((id) => {
                 const symptom = PHYSICAL_SYMPTOMS.find((item) => item.id === id)!;
                 const side = symptom.body.startsWith("L ") ? "L" : symptom.body.startsWith("R ") ? "R" : "";
-                return <span key={id} title={`${symptom.indicator}: ${symptom.meaning}`}>{side && <b>{side}</b>}{symptom.figure}</span>;
+                const rating = symptomRatings[id];
+                const ratingLabel = rating === "right" ? "Right" : rating === "wrong" ? "Wrong" : "";
+                return <span key={id} className={rating ? `is-${rating}` : ""} title={`${symptom.indicator}: ${symptom.meaning}${ratingLabel ? ` (${ratingLabel})` : ""}`}>{side && <b>{side}</b>}{symptom.figure}</span>;
               })}
             </div>
           )}
@@ -402,7 +428,7 @@ function LuckChartView({ date, isPreview, onClose }: { date: string; isPreview: 
                   An all-day event on {date}. The Luck Chart screenshot is saved to <strong>Horosevents</strong> in your Google Drive and attached to the event, so it stays there after this app cleans up its own
                   files.
                 </p>
-                {symptoms.length > 0 && <p className="luck-chart-event-note">Traditional Hindu body signs: {symptoms.map((id) => { const item = PHYSICAL_SYMPTOMS.find((symptom) => symptom.id === id)!; return `${item.figure} ${item.indicator} — ${item.meaning}`; }).join(" · ")}</p>}
+                {symptoms.length > 0 && <p className="luck-chart-event-note">Traditional Hindu body signs: {symptoms.map((id) => { const item = PHYSICAL_SYMPTOMS.find((symptom) => symptom.id === id)!; const rating = symptomRatings[id]; return `${item.figure} ${item.indicator} — ${item.meaning}${rating ? ` (${rating === "right" ? "Right" : "Wrong"})` : ""}`; }).join(" · ")}</p>}
                 {eventError && <p className="luck-chart-event-error">Couldn&apos;t make the event, so none was created. Try again.</p>}
                 <button type="submit" className="luck-chart-event-submit" disabled={eventBusy}>
                   {eventBusy ? "Saving the screenshot…" : "Create event"}

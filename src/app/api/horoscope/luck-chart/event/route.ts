@@ -3,7 +3,7 @@ import { getCurrentUser } from "@/lib/session";
 import { sideOk } from "@/lib/image/luckChartShot";
 import { googleAccessToken, googleConsentUrl, googleOAuthConfigured, type PendingEvent } from "@/lib/google/oauth";
 import { NoLuckChartError, createLuckChartEvent } from "@/lib/google/luckChartEvent";
-import { isPhysicalSymptomId } from "@/lib/physicalSymptoms";
+import { isPhysicalSymptomId, isSymptomRating, type PhysicalSymptomRatings } from "@/lib/physicalSymptoms";
 
 /**
  * The Luck Chart's calendar icon:
@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
   } catch {
     return NextResponse.json({ error: "Invalid body" }, { status: 400 });
   }
-  const { date, topic, symptoms, w, h, preview } = (body ?? {}) as Record<string, unknown>;
+  const { date, topic, symptoms, symptomRatings, w, h, preview } = (body ?? {}) as Record<string, unknown>;
   const width = Math.round(Number(w));
   const height = Math.round(Number(h));
   if (typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return NextResponse.json({ error: "Invalid date" }, { status: 400 });
@@ -33,12 +33,24 @@ export async function POST(request: NextRequest) {
   if (symptoms !== undefined && (!Array.isArray(symptoms) || symptoms.length > 3 || symptoms.some((item) => !isPhysicalSymptomId(item)))) {
     return NextResponse.json({ error: "Select up to 3 valid traditional body signs" }, { status: 400 });
   }
+  const symptomIds = Array.isArray(symptoms) ? [...new Set(symptoms as string[])] : [];
+  if (symptomRatings !== undefined && (
+    typeof symptomRatings !== "object" || symptomRatings === null || Array.isArray(symptomRatings) ||
+    Object.entries(symptomRatings).some(([id, rating]) => !isPhysicalSymptomId(id) || !symptomIds.includes(id) || !isSymptomRating(rating))
+  )) {
+    return NextResponse.json({ error: "Invalid traditional body sign ratings" }, { status: 400 });
+  }
+  const ratings: PhysicalSymptomRatings = {};
+  for (const [id, rating] of Object.entries((symptomRatings ?? {}) as Record<string, unknown>)) {
+    if (isPhysicalSymptomId(id) && symptomIds.includes(id) && isSymptomRating(rating)) ratings[id] = rating;
+  }
 
   const pending: PendingEvent = {
     userId: user.id,
     date,
     topic: (typeof topic === "string" ? topic.trim() : "").slice(0, 120) || `Luck Chart ${date}`,
-    symptoms: Array.isArray(symptoms) ? [...new Set(symptoms as string[])] : [],
+    symptoms: symptomIds,
+    symptomRatings: ratings,
     w: width,
     h: height,
     preview: preview === true,

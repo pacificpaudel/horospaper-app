@@ -4,7 +4,7 @@ import { deleteGeneratedFiles, saveGeneratedFile } from "@/lib/storage";
 import { insertAllDayEvent } from "./calendar";
 import { EVENTS_FOLDER, ensureEventsFolder, shareWithAnyone, uploadPngToFolder } from "./drive";
 import type { PendingEvent } from "./oauth";
-import { physicalSymptomLabels } from "@/lib/physicalSymptoms";
+import { physicalSymptomLabels, type PhysicalSymptomRatings } from "@/lib/physicalSymptoms";
 
 /** The day had no Luck Chart to photograph -- nothing to make an event from. */
 export class NoLuckChartError extends Error {}
@@ -20,7 +20,7 @@ export type EventResult =
   | { kind: "template"; templateUrl: string; imageUrl: string };
 
 /** Google's pre-filled "new event" page: all this can carry is text, so the picture goes in as a link. */
-function eventTemplateUrl(topic: string, date: string, imageUrl: string, symptoms: string[]): string {
+function eventTemplateUrl(topic: string, date: string, imageUrl: string, symptoms: string[], ratings: PhysicalSymptomRatings = {}): string {
   const compact = (iso: string) => iso.replace(/-/g, "");
   const end = new Date(`${date}T00:00:00Z`);
   end.setUTCDate(end.getUTCDate() + 1);
@@ -28,7 +28,7 @@ function eventTemplateUrl(topic: string, date: string, imageUrl: string, symptom
     action: "TEMPLATE",
     text: topic,
     dates: `${compact(date)}/${compact(end.toISOString().slice(0, 10))}`,
-    details: `Luck Chart for ${date}${symptoms.length ? `\n\nTraditional Hindu body signs: ${physicalSymptomLabels(symptoms).join(", ")}` : ""}\n\nScreenshot:\n${imageUrl}`,
+    details: `Luck Chart for ${date}${symptoms.length ? `\n\nTraditional Hindu body signs: ${physicalSymptomLabels(symptoms, ratings).join(", ")}` : ""}\n\nScreenshot:\n${imageUrl}`,
   });
   return `https://calendar.google.com/calendar/render?${params}`;
 }
@@ -57,7 +57,7 @@ export async function createLuckChartEvent(token: string | null, pending: Pendin
   if (!png) throw new NoLuckChartError(`No Luck Chart for ${pending.date}`);
   const shot = await storeShot(pending, png, origin);
 
-  if (!token) return { kind: "template", templateUrl: eventTemplateUrl(pending.topic, pending.date, shot.url, pending.symptoms ?? []), imageUrl: shot.url };
+  if (!token) return { kind: "template", templateUrl: eventTemplateUrl(pending.topic, pending.date, shot.url, pending.symptoms ?? [], pending.symptomRatings), imageUrl: shot.url };
 
   try {
     const folderId = await ensureEventsFolder(token);
@@ -65,7 +65,7 @@ export async function createLuckChartEvent(token: string | null, pending: Pendin
     await shareWithAnyone(token, file.id);
     const event = await insertAllDayEvent(token, {
       summary: pending.topic,
-      description: `Luck Chart for ${pending.date}${pending.symptoms?.length ? `\n\nTraditional Hindu body signs: ${physicalSymptomLabels(pending.symptoms).join(", ")}` : ""}\n\nScreenshot (attached, and in your Drive under ${EVENTS_FOLDER}):\n${file.webViewLink}`,
+      description: `Luck Chart for ${pending.date}${pending.symptoms?.length ? `\n\nTraditional Hindu body signs: ${physicalSymptomLabels(pending.symptoms, pending.symptomRatings).join(", ")}` : ""}\n\nScreenshot (attached, and in your Drive under ${EVENTS_FOLDER}):\n${file.webViewLink}`,
       date: pending.date,
       attachment: { fileUrl: file.webViewLink, title: `Luck Chart ${pending.date}` },
     });
@@ -74,6 +74,6 @@ export async function createLuckChartEvent(token: string | null, pending: Pendin
     return { kind: "created", eventUrl: event.htmlLink, fileUrl: file.webViewLink };
   } catch (err) {
     console.warn("[google] Drive/Calendar failed, falling back to a pre-filled event:", err instanceof Error ? err.message : err);
-    return { kind: "template", templateUrl: eventTemplateUrl(pending.topic, pending.date, shot.url, pending.symptoms ?? []), imageUrl: shot.url };
+    return { kind: "template", templateUrl: eventTemplateUrl(pending.topic, pending.date, shot.url, pending.symptoms ?? [], pending.symptomRatings), imageUrl: shot.url };
   }
 }

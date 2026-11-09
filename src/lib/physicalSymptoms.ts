@@ -61,14 +61,21 @@ export const PHYSICAL_SYMPTOMS = [
 ] as const;
 
 export type PhysicalSymptomId = (typeof PHYSICAL_SYMPTOMS)[number]["id"];
+export type SymptomRating = "right" | "wrong";
+export type PhysicalSymptomRatings = Partial<Record<PhysicalSymptomId, SymptomRating>>;
 
 export function isPhysicalSymptomId(value: unknown): value is PhysicalSymptomId {
   return typeof value === "string" && PHYSICAL_SYMPTOMS.some((symptom) => symptom.id === value);
 }
 
-export function physicalSymptomLabels(ids: readonly string[]): string[] {
+export function isSymptomRating(value: unknown): value is SymptomRating {
+  return value === "right" || value === "wrong";
+}
+
+export function physicalSymptomLabels(ids: readonly string[], ratings: PhysicalSymptomRatings = {}): string[] {
   return ids.flatMap((id) => {
     const symptom = PHYSICAL_SYMPTOMS.find((item) => item.id === id);
-    return symptom ? [`${symptom.figure} ${symptom.indicator} — ${symptom.meaning}`] : [];
+    const rating = symptom ? ratings[symptom.id] : undefined;
+    return symptom ? [`${symptom.figure} ${symptom.indicator} — ${symptom.meaning}${rating ? ` (${rating === "right" ? "Right" : "Wrong"})` : ""}`] : [];
   });
 }
