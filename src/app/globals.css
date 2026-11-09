@@ -179,6 +179,25 @@ body {
    made from the day's chart. */
 .luck-chart-calendar-button { position: absolute; top: max(12px, env(safe-area-inset-top)); right: 12px; display: inline-flex; align-items: center; justify-content: center; width: 42px; height: 42px; border: 1px solid rgba(247, 197, 106, 0.6); border-radius: 999px; background: rgba(11, 18, 32, 0.85); color: var(--gold); cursor: pointer; backdrop-filter: blur(6px); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); }
 .luck-chart-calendar-button:hover, .luck-chart-calendar-button:focus-visible { background: rgba(48, 40, 24, 0.92); outline: none; }
+.luck-chart-physical { position: absolute; top: max(62px, calc(env(safe-area-inset-top) + 58px)); right: 12px; z-index: 1; display: flex; flex-direction: column; align-items: flex-end; gap: 0.25rem; cursor: default; }
+.luck-chart-physical-toggle { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.4rem 0.55rem; border: 1px solid rgba(247, 197, 106, 0.6); border-radius: 8px; background: rgba(11, 18, 32, 0.92); color: #f3f5fa; font: 600 0.68rem/1.2 var(--font-sans), system-ui, sans-serif; cursor: pointer; backdrop-filter: blur(6px); }
+.luck-chart-physical-toggle:focus-visible, .luck-chart-physical-toggle:hover { outline: 2px solid #f7c56a; outline-offset: 2px; }
+.luck-chart-physical-menu { position: absolute; top: 44px; right: 0; display: grid; gap: 0.5rem; width: min(22rem, calc(100vw - 24px)); max-height: min(72vh, 38rem); padding: 0.7rem; border: 1px solid rgba(247, 197, 106, 0.65); border-radius: 12px; background: rgba(8, 11, 22, 0.97); color: #d7dce8; box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55); }
+.luck-chart-physical-menu-heading { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; color: var(--gold); font: 600 0.72rem/1.3 var(--font-sans), system-ui, sans-serif; }
+.luck-chart-physical-menu-heading span { color: #a9b1c4; font-size: 0.9em; }
+.luck-chart-physical-options { display: grid; gap: 0.15rem; min-height: 0; max-height: min(58vh, 30rem); overflow-y: auto; overscroll-behavior: contain; }
+.luck-chart-physical-option { display: grid; grid-template-columns: 1.1rem 1.5rem minmax(0, 1fr); align-items: center; gap: 0.4rem; padding: 0.35rem; border-radius: 6px; cursor: pointer; }
+.luck-chart-physical-option:hover { background: rgba(247, 197, 106, 0.08); }
+.luck-chart-physical-option input { width: 1rem; height: 1rem; margin: 0; accent-color: #f7c56a; }
+.luck-chart-physical-option input:disabled { opacity: 0.45; }
+.luck-chart-physical-option-figure { font-size: 1.1rem; text-align: center; }
+.luck-chart-physical-option strong, .luck-chart-physical-option small { display: block; }
+.luck-chart-physical-option strong { font: 600 0.68rem/1.25 var(--font-sans), system-ui, sans-serif; }
+.luck-chart-physical-option small { margin-top: 0.1rem; color: #a9b1c4; font: 400 0.62rem/1.3 var(--font-sans), system-ui, sans-serif; }
+.luck-chart-physical-save { justify-self: end; min-width: 4.5rem; padding: 0.42rem 0.85rem; border: 1px solid rgba(247, 197, 106, 0.65); border-radius: 999px; background: rgba(247, 197, 106, 0.12); color: var(--gold); font: 700 0.7rem/1.2 var(--font-sans), system-ui, sans-serif; cursor: pointer; }
+.luck-chart-physical-save:hover, .luck-chart-physical-save:focus-visible { background: rgba(247, 197, 106, 0.22); outline: 2px solid #f7c56a; outline-offset: 1px; }
+.luck-chart-physical-column { display: flex; flex-direction: column; align-items: center; gap: 0.25rem; }
+.luck-chart-physical-column span { display: grid; place-items: center; width: 36px; height: 36px; border: 1px solid rgba(247, 197, 106, 0.55); border-radius: 999px; background: rgba(11, 18, 32, 0.9); font-size: 1.2rem; }
 .luck-chart-event { display: grid; gap: 0.6em; cursor: default; }
 .luck-chart-event label { color: #a9b1c4; font-size: 0.78em; letter-spacing: 0.08em; text-transform: uppercase; }
 .luck-chart-event input { width: 100%; padding: 0.55em 0.7em; border: 1px solid rgba(247, 197, 106, 0.45); border-radius: 8px; background: #05070f; color: #f3f5fa; font: inherit; font-weight: 600; }

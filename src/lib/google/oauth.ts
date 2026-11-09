@@ -29,6 +29,7 @@ export interface PendingEvent {
   userId: string;
   date: string;
   topic: string;
+  symptoms: string[];
   w: number;
   h: number;
   preview: boolean;
