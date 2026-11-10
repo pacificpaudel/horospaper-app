@@ -7,3 +7,8 @@ This version has breaking changes — APIs, conventions, and file structure may 
 This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
 
 <!-- END:nextjs-agent-rules -->
+
+## Release version
+
+- Before every commit, increment `APP_VERSION` in `src/lib/version.ts` and include that version change in the same commit. The version shown in the header does not update automatically from the package version or deployment.
+- Deploy releases to Vercel with the production target (`vercel --prod`), never as preview deployments.

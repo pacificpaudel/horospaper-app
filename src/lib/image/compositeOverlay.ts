@@ -17,9 +17,10 @@ function lighten(hex: string, amount: number): string {
   return `#${[0, 1, 2].map((k) => channel(k).toString(16).padStart(2, "0")).join("")}`;
 }
 
-/** The tags a reading shows: its 4 (one per luck source), or the older mood + theme pair. */
+/** The date header shows the three daily interpretation tags, omitting the solar-activity state. */
 export function readingTags(reading: DailyReading): string[] {
-  return reading.tags?.length ? reading.tags.map((t) => t.tag) : [reading.intent.mood, reading.intent.theme];
+  const tags = reading.tags?.filter((tag) => tag.source !== "schumann").map((tag) => tag.tag);
+  return tags?.length ? tags : [reading.intent.mood, reading.intent.theme];
 }
 
 export interface TargetCanvas {

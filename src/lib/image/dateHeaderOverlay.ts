@@ -167,7 +167,7 @@ function dateHeaderLayout(
     // All the tags on one line, shrunk to fit inside the date panel's own
     // width, on a panel exactly that wide -- so the header block is one
     // neat column.
-    const intentStyle: TextStyle = { ...dateStyle, color: "#f7c56a" };
+    const intentStyle: TextStyle = { ...dateStyle, color: "#f7c56a", strokeWidth: 0.22 };
     const text = tags.join(" · ").toUpperCase();
     const innerPad = dateBox.w * 0.06;
     const intentSize = fitSize(text, dateSize, dateBox.w - innerPad * 2, intentStyle);

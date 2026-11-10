@@ -32,10 +32,12 @@ export interface PanchangData {
   weekday: string;
   sunrise: string;
   sunset: string;
-  tithi: { number: number; name: string; paksha: string };
-  nakshatra: { number: number; name: string; pada: number; lord: string };
-  yoga: { number: number; name: string };
-  karana: { number: number; name: string };
+  tithi: { number: number; name: string; paksha: string; endsAt?: string };
+  nakshatra: { number: number; name: string; pada: number; lord: string; endsAt?: string };
+  yoga: { number: number; name: string; endsAt?: string };
+  karana: { number: number; name: string; endsAt?: string };
+  /** Ordered from sunrise through the next sunrise, with each local end time. */
+  karanas: { number: number; name: string; endsAt?: string }[];
   rahuKalam: { start: string; end: string } | null;
   moonSign: string | null;
 }
@@ -77,8 +79,8 @@ export async function fetchPanchang(input: PanchangInput): Promise<PanchangData 
   const apiKey = process.env.FREEASTRO_API_KEY;
   if (!apiKey) return null;
 
-  // v2: now requests Devanagari (Hindi/"hi") names instead of English.
-  const key = `panchang:v2:${panchangCacheKey(input)}`;
+  // v3 retains local transition times used for daylight-weighted scoring.
+  const key = `panchang:v3:${panchangCacheKey(input)}`;
   const cached = await redis.get<PanchangData>(key).catch(() => null);
   if (cached) return cached;
 
@@ -110,15 +112,17 @@ export async function fetchPanchang(input: PanchangInput): Promise<PanchangData 
       throw new Error("freeastroapi panchang response missing core fields");
     }
 
+    const karanas = (payload.karanas ?? []).map((item) => ({ number: item.number, name: item.name, endsAt: item.ends_at }));
     const data: PanchangData = {
       date: payload.date ?? input.date,
       weekday: payload.weekday?.name ?? "",
       sunrise: payload.sunrise ?? "",
       sunset: payload.sunset ?? "",
-      tithi: { number: payload.tithi.number, name: payload.tithi.name, paksha: payload.tithi.paksha ?? "" },
-      nakshatra: { number: payload.nakshatra.number, name: payload.nakshatra.name, pada: payload.nakshatra.pada ?? 0, lord: payload.nakshatra.lord ?? "" },
-      yoga: { number: payload.yoga.number, name: payload.yoga.name },
-      karana: payload.karanas?.[0] ? { number: payload.karanas[0].number, name: payload.karanas[0].name } : { number: 0, name: "" },
+      tithi: { number: payload.tithi.number, name: payload.tithi.name, paksha: payload.tithi.paksha ?? "", endsAt: payload.tithi.ends_at },
+      nakshatra: { number: payload.nakshatra.number, name: payload.nakshatra.name, pada: payload.nakshatra.pada ?? 0, lord: payload.nakshatra.lord ?? "", endsAt: payload.nakshatra.ends_at },
+      yoga: { number: payload.yoga.number, name: payload.yoga.name, endsAt: payload.yoga.ends_at },
+      karana: karanas[0] ?? { number: 0, name: "" },
+      karanas,
       rahuKalam: payload.rahu_kalam?.start && payload.rahu_kalam.end ? { start: payload.rahu_kalam.start, end: payload.rahu_kalam.end } : null,
       moonSign: payload.request_time_panchang?.moon_sign?.name ?? null,
     };

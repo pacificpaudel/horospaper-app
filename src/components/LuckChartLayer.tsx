@@ -8,12 +8,13 @@ import { KeepAwake } from "./KeepAwake";
 import { luckMeterPanel } from "@/lib/image/luckMeterGeometry";
 import { PHYSICAL_SYMPTOMS, type PhysicalSymptomId, type PhysicalSymptomRatings, type SymptomRating } from "@/lib/physicalSymptoms";
 import type { DailyPhysicalSymptomLog } from "@/lib/physicalSymptomLog";
+import type { DailyReadingDTO } from "@/types/api";
 
 /**
  * The "Luck Chart" button over a wallpaper image: centered just above the
  * luck percentage drawn near its bottom (never covering it), with the
- * percentage panel itself clickable too. Either opens LuckChartView -- the
- * Luck Chart and its Analysis, drawn fresh to fill the whole screen. The
+ * percentage panel opens its score breakdown. The Luck Chart button opens
+ * LuckChartView -- the chart and its Analysis, drawn fresh to fill the whole screen. The
  * image is shown with object-fit: contain inside the same box as this
  * layer, so `canvas` (the image's own size) is enough to place them.
  * Whether the view is open is owned by the page, so it survives the
@@ -25,16 +26,22 @@ export function LuckChartLayer({
   hasChart,
   date,
   isPreview,
+  reading,
   open,
   onOpenChange,
+  detailsOpen,
+  onDetailsOpenChange,
 }: {
   canvas: { w: number; h: number };
   /** Whether the day has a Luck Chart to show (its reading has a kundli). */
   hasChart: boolean;
   date: string;
   isPreview: boolean;
+  reading: DailyReadingDTO;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  detailsOpen: boolean;
+  onDetailsOpenChange: (open: boolean) => void;
 }) {
   const layerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
@@ -51,15 +58,15 @@ export function LuckChartLayer({
 
   let button: React.CSSProperties | null = null;
   let meter: React.CSSProperties | null = null;
-  if (hasChart && size && size.w > 0 && size.h > 0) {
+  if (size && size.w > 0 && size.h > 0) {
     // Where object-fit: contain puts the image inside this layer's box.
     const scale = Math.min(size.w / canvas.w, size.h / canvas.h);
     const offsetX = (size.w - canvas.w * scale) / 2;
     const offsetY = (size.h - canvas.h * scale) / 2;
     const panel = luckMeterPanel(canvas.w, canvas.h);
-    // Resting just above the percentage panel, clear of it.
-    button = { left: offsetX + (canvas.w / 2) * scale, top: offsetY + panel.y * scale - 6 };
     meter = { left: offsetX + panel.x * scale, top: offsetY + panel.y * scale, width: panel.w * scale, height: panel.h * scale };
+    // Resting just above the percentage panel, clear of it.
+    if (hasChart) button = { left: offsetX + (canvas.w / 2) * scale, top: offsetY + panel.y * scale - 6 };
   }
 
   const openChart = (e: React.MouseEvent) => {
@@ -68,15 +75,75 @@ export function LuckChartLayer({
     onOpenChange(true);
   };
 
+  const openDetails = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onDetailsOpenChange(true);
+  };
+
   return (
     <div ref={layerRef} className="luck-chart-layer">
-      {meter && <button type="button" className="luck-chart-meter-hotspot" style={meter} aria-label="Open the Luck Chart full screen" onClick={openChart} />}
+      {meter && <button type="button" className="luck-chart-meter-hotspot" style={meter} aria-label={`Show how today's Luck score of ${reading.luckScore}% was calculated`} title="Show Luck score calculation" onClick={openDetails} />}
       {button && (
         <button type="button" className="luck-chart-button" style={button} onClick={openChart}>
           <span aria-hidden="true">✦</span> Luck Chart
         </button>
       )}
       {open && <LuckChartView date={date} isPreview={isPreview} onClose={() => onOpenChange(false)} />}
+      {detailsOpen && <LuckCalculationDialog reading={reading} onClose={() => onDetailsOpenChange(false)} />}
+    </div>
+  );
+}
+
+function LuckCalculationDialog({ reading, onClose }: { reading: DailyReadingDTO; onClose: () => void }) {
+  const calculation = reading.luckCalculation;
+  const factors = calculation?.factors ?? [];
+  const finalScore = Math.round(calculation?.weightedScore ?? reading.luckScore);
+  const interpretation = finalScore >= 90 ? "Exceptional"
+    : finalScore >= 80 ? "Highly favourable"
+    : finalScore >= 70 ? "Favourable"
+    : finalScore >= 60 ? "Moderately favourable"
+    : finalScore >= 50 ? "Neutral"
+    : finalScore >= 40 ? "Slightly unfavourable"
+    : finalScore >= 25 ? "Unfavourable"
+    : "Highly unfavourable";
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  return (
+    <div className="luck-calculation-backdrop" onClick={(event) => event.stopPropagation()} onMouseDown={(event) => { event.stopPropagation(); if (event.target === event.currentTarget) onClose(); }}>
+      <section className="luck-calculation-dialog" role="dialog" aria-modal="true" aria-labelledby="luck-calculation-title">
+        <button type="button" className="luck-chart-info-close" onClick={onClose} aria-label="Close calculation">×</button>
+        <h2 id="luck-calculation-title">How today’s Luck score was calculated</h2>
+        <p className="luck-calculation-intro">The score uses your ten-factor model. Each factor is rated from 0 to 100, then multiplied by its assigned weight.</p>
+        {!calculation && <p className="luck-calculation-note">This saved wallpaper predates the ten-factor calculation and does not include its individual inputs. Refresh or regenerate today’s wallpaper to see the new calculation.</p>}
+        <div className="luck-calculation-rows">
+          {factors.map((source) => {
+            const contribution = source.score * source.weight / 100;
+            return (
+              <article className="luck-calculation-row" key={source.id}>
+                <div className="luck-calculation-row-heading">
+                  <strong>{source.name}</strong>
+                  <span>{source.score}/100 · {source.weight}%</span>
+                </div>
+                <p>{source.detail}</p>
+                <small>{source.score} × {source.weight}% = {contribution.toFixed(2)} points{source.available ? "" : " · neutral fallback"}</small>
+              </article>
+            );
+          })}
+        </div>
+        <div className="luck-calculation-formula">
+          <strong>Σ (factor score × factor weight) ÷ 100</strong>
+          {calculation && <span>Weighted total: {calculation.weightedScore.toFixed(2)}</span>}
+          <b>Luck score: {finalScore}% — {interpretation}</b>
+        </div>
+        {calculation && <p className="luck-calculation-note">The weights total 100%; missing daily Panchang inputs use a visible neutral score of 50 and keep their assigned weight. The individual rating mappings are the app’s operational interpretation of the proposed model, not one universally fixed classical formula.</p>}
+      </section>
     </div>
   );
 }

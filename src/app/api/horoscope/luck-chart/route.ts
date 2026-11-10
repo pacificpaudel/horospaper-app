@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/session";
 import { getExistingHoroscope } from "@/lib/horoscope";
 import { buildLuckChartViewSvg } from "@/lib/image/gocharOverlay";
+import { getArchivedCalendarDay } from "@/lib/userCalendar";
+import { getDailyPhysicalSymptoms } from "@/lib/physicalSymptomLog";
+import { symptomsFooter } from "@/lib/image/luckChartShot";
 
 const MIN_SIDE = 200;
 const MAX_SIDE = 8000;
@@ -25,10 +28,14 @@ export async function GET(request: NextRequest) {
   if (!sideOk(width) || !sideOk(height)) return NextResponse.json({ error: "Invalid size" }, { status: 400 });
 
   const horoscope = await getExistingHoroscope(user.id, new Date(`${date}T00:00:00Z`), params.get("preview") === "1");
-  const kundli = horoscope?.dailyReading?.kundli;
-  if (!horoscope?.dailyReading || !kundli) return NextResponse.json({ error: "No Luck Chart for that day" }, { status: 404 });
+  const archived = !horoscope && params.get("preview") !== "1" ? await getArchivedCalendarDay(user.id, date) : null;
+  const reading = horoscope?.dailyReading ?? archived?.reading;
+  const kundli = reading?.kundli;
+  if (!reading || !kundli) return NextResponse.json({ error: "No Luck Chart for that day" }, { status: 404 });
 
-  const { svg, info } = await buildLuckChartViewSvg(width, height, kundli, horoscope.generationDate, horoscope.dailyReading.panchang);
+  const symptomLog = await getDailyPhysicalSymptoms(user.id, date);
+  const footer = symptomsFooter(width, height, symptomLog?.symptoms ?? [], symptomLog?.ratings ?? {});
+  const { svg, info } = await buildLuckChartViewSvg(width, height, kundli, horoscope?.generationDate ?? archived!.date, reading.panchang, footer);
   return new NextResponse(svg, {
     headers: {
       "Content-Type": "image/svg+xml; charset=utf-8",

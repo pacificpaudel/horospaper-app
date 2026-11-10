@@ -8,11 +8,12 @@ import { HoroscopeSections } from "@/lib/llm/types";
 import { generateHoroscopeImage, rerenderHoroscopeImage, WallpaperSource } from "@/lib/image/generateImage";
 import { currentSchumannHour, getSchumannSnapshot } from "@/lib/schumann";
 import { deleteGeneratedFiles } from "@/lib/storage";
-import { applySchumann, buildDailyReading, DailyReading } from "@/lib/dailyReading";
+import { applySchumann, buildDailyReading, DailyReading, ensureLuckCalculation } from "@/lib/dailyReading";
 import { fetchKundli } from "@/lib/astrologyApi";
 import { kundliFromNatal } from "@/lib/image/kundliOverlay";
 import { BirthProfile } from "@/types/models";
 import { Horoscope } from "@/types/models";
+import { saveArchivedCalendarDay } from "@/lib/userCalendar";
 
 export class HoroscopeGenerationError extends Error {
   constructor(public stage: "astrology" | "llm" | "image" | "unknown", message: string) {
@@ -73,10 +74,12 @@ export async function generateHoroscopeForUser(params: {
   isPreview?: boolean;
   desktopRatio?: number;
   regenerateArt?: boolean;
+  /** Current browser-detected location, kept separate from birth-chart coordinates. */
+  currentLocation?: { latitude: number; longitude: number; timezone: string };
   /** Zone the wallpaper's Schumann graph is labelled in; defaults to the birth timezone. */
   displayTimeZone?: string;
 }): Promise<Horoscope> {
-  const { userId, profile, forDate = new Date(), isPreview = false, desktopRatio, regenerateArt = false, displayTimeZone = profile.timezone } = params;
+  const { userId, profile, forDate = new Date(), isPreview = false, desktopRatio, regenerateArt = false, displayTimeZone = profile.timezone, currentLocation } = params;
   const day = dateOnlyString(forDate);
 
   let astrology: StructuredAstrologyData;
@@ -97,7 +100,7 @@ export async function generateHoroscopeForUser(params: {
   // text, and the day's luck + 2 tags (planetary gochar + Nepali rashifal).
   const [textResult, reading] = await Promise.allSettled([
     generateHoroscope(astrology, { name: profile.name, language: profile.language }),
-    getSchumannSnapshot().then((snapshot) => buildDailyReading(astrology, forDate, profile.timezone, snapshot.score)),
+    getSchumannSnapshot().then((snapshot) => buildDailyReading(astrology, forDate, profile.timezone, snapshot.score, currentLocation)),
   ]);
   if (textResult.status === "rejected") {
     logGenerationError(userId, "llm", textResult.reason);
@@ -180,29 +183,33 @@ export async function generateHoroscopeForUser(params: {
   };
 
   await redis.set(horoscopeKey(userId, day, isPreview), horoscope, { ex: TTL_SECONDS });
+  if (!isPreview) {
+    await saveArchivedCalendarDay(userId, {
+      date: day,
+      reading: dailyReading,
+      moonPhaseName: astrology.today.moonPhaseName,
+      moonIllumination: astrology.today.moonIllumination,
+    }).catch((err) => console.warn("[calendar] archive write failed:", err instanceof Error ? err.message : err));
+  }
   return horoscope;
 }
 
 /** True when `horoscope`'s wallpaper still shows an earlier hour's Schumann data and can be redrawn. */
 export function needsSchumannRefresh(horoscope: Horoscope): boolean {
-  return Boolean(horoscope.wallpaperSource && horoscope.dailyReading && horoscope.schumannHour !== currentSchumannHour());
+  return Boolean(horoscope.wallpaperSource && horoscope.dailyReading && (horoscope.dailyReading.luckCalculation?.method !== "hindu-10-factor-v2" || horoscope.schumannHour !== currentSchumannHour()));
 }
 
 /**
- * The hourly refresh: redraws the stored wallpaper's overlays on its same
- * artwork with this hour's Schumann data, and swaps in the new image URLs.
- * The day's reading, luck and artwork are untouched, and it doesn't count
- * against the daily generation budget. On failure the existing horoscope
- * is returned as-is.
+ * The hourly refresh redraws the stored artwork with the live Schumann
+ * visualization. When migrating an older cached reading, it also replaces
+ * its previous Luck formula with the ten-factor calculation.
  */
 export async function refreshHoroscopeWallpaper(horoscope: Horoscope, timeZone: string, desktopRatio?: number): Promise<Horoscope> {
   if (!horoscope.wallpaperSource || !horoscope.dailyReading) return horoscope;
   try {
-    // The Schumann calmness is one of the luck % sources, so the luck and
-    // the 4 tags move with it every hour; the rest of the day's reading
-    // (planets, rashifal, Panchang) stays as generated.
     const { score } = await getSchumannSnapshot();
-    const reading = applySchumann(horoscope.dailyReading, score);
+    const baseReading = ensureLuckCalculation(horoscope.dailyReading, horoscope.astrologyData, horoscope.generationDate);
+    const reading = applySchumann(baseReading, score);
     const image = await rerenderHoroscopeImage({
       source: horoscope.wallpaperSource,
       astrology: horoscope.astrologyData,
@@ -223,6 +230,12 @@ export async function refreshHoroscopeWallpaper(horoscope: Horoscope, timeZone: 
       luckChartBoxes: image.luckChartBoxes,
     };
     await redis.set(horoscopeKey(horoscope.userId, horoscope.generationDate, horoscope.isPreview), refreshed, { ex: TTL_SECONDS });
+    await saveArchivedCalendarDay(horoscope.userId, {
+      date: horoscope.generationDate,
+      reading,
+      moonPhaseName: horoscope.astrologyData.today.moonPhaseName,
+      moonIllumination: horoscope.astrologyData.today.moonIllumination,
+    }).catch((err) => console.warn("[calendar] archive refresh failed:", err instanceof Error ? err.message : err));
     const superseded = [horoscope.imageUrl, horoscope.imageUrlMobile, horoscope.imageUrlFrame].filter(
       (url): url is string => Boolean(url) && url !== image.url && url !== image.mobileUrl && url !== image.frameUrl
     );

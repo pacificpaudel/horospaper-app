@@ -1,6 +1,8 @@
 import { getExistingHoroscope } from "@/lib/horoscope";
 import { buildLuckChartViewSvg } from "@/lib/image/gocharOverlay";
 import { PHYSICAL_SYMPTOMS, type PhysicalSymptomRatings } from "@/lib/physicalSymptoms";
+import { getDailyPhysicalSymptoms } from "@/lib/physicalSymptomLog";
+import { getArchivedCalendarDay } from "@/lib/userCalendar";
 
 export const MIN_SIDE = 200;
 export const MAX_SIDE = 2400;
@@ -19,7 +21,7 @@ function escapeXml(text: string): string {
   return text.replace(/[&<>"']/g, (char) => entities[char]);
 }
 
-function symptomsFooter(width: number, y: number, ids: readonly string[], ratings: PhysicalSymptomRatings): { height: number; markup: string } | undefined {
+export function symptomsFooter(width: number, y: number, ids: readonly string[], ratings: PhysicalSymptomRatings): { height: number; markup: string } | undefined {
   const symptoms = ids.flatMap((id) => {
     const symptom = PHYSICAL_SYMPTOMS.find((item) => item.id === id);
     return symptom ? [{ symptom, rating: ratings[symptom.id] }] : [];
@@ -58,10 +60,15 @@ export async function renderLuckChartPng(
   ratings: PhysicalSymptomRatings = {},
 ): Promise<Buffer | null> {
   const horoscope = await getExistingHoroscope(userId, new Date(`${date}T00:00:00Z`), preview);
-  const kundli = horoscope?.dailyReading?.kundli;
-  if (!horoscope?.dailyReading || !kundli) return null;
-  const footer = symptomsFooter(width, height, symptoms, ratings);
-  const { svg } = await buildLuckChartViewSvg(width, height, kundli, horoscope.generationDate, horoscope.dailyReading.panchang, footer);
+  const archived = !horoscope && !preview ? await getArchivedCalendarDay(userId, date) : null;
+  const reading = horoscope?.dailyReading ?? archived?.reading;
+  const kundli = reading?.kundli;
+  if (!reading || !kundli) return null;
+  const symptomLog = await getDailyPhysicalSymptoms(userId, date);
+  const snapshotSymptoms = symptoms.length ? symptoms : symptomLog?.symptoms ?? [];
+  const snapshotRatings = { ...symptomLog?.ratings, ...ratings };
+  const footer = symptomsFooter(width, height, snapshotSymptoms, snapshotRatings);
+  const { svg } = await buildLuckChartViewSvg(width, height, kundli, horoscope?.generationDate ?? archived!.date, reading.panchang, footer);
   const sharp = (await import("sharp")).default;
   return sharp(Buffer.from(svg)).png().toBuffer();
 }

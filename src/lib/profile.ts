@@ -5,6 +5,7 @@ import { deleteUsageForUser } from "@/lib/usage";
 import { isRegisteredDevice, unregisterDevice } from "@/lib/devices";
 import { BirthProfile } from "@/types/models";
 import { deletePhysicalSymptomsForUser } from "@/lib/physicalSymptomLog";
+import { deleteCalendarDataForUser } from "@/lib/userCalendar";
 
 export function profileKey(userId: string): string {
   return `profile:${userId}`;
@@ -29,7 +30,7 @@ export async function saveBirthProfile(
   };
   // Kept for 24 hours -- or, for the Android app's registered devices, until
   // deleted, so each morning's chart can be made before the app is opened.
-  if (await isRegisteredDevice(userId)) await redis.set(profileKey(userId), profile);
+  if (userId.startsWith("google:") || await isRegisteredDevice(userId)) await redis.set(profileKey(userId), profile);
   else await redis.set(profileKey(userId), profile, { ex: TTL_SECONDS });
   return profile;
 }
@@ -38,9 +39,11 @@ export async function saveBirthProfile(
 export async function deleteUserData(userId: string): Promise<void> {
   await Promise.all([
     redis.del(profileKey(userId)),
+    redis.del(`account-location:${userId}`),
     unregisterDevice(userId),
     deleteHoroscopesForUser(userId),
     deleteUsageForUser(userId),
     deletePhysicalSymptomsForUser(userId),
+    deleteCalendarDataForUser(userId),
   ]);
 }

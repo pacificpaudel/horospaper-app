@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Logo } from "./Logo";
 import { FullscreenButton } from "./FullscreenButton";
 import { APP_VERSION } from "@/lib/version";
+import { GoogleAuthControl } from "./GoogleAuthControl";
 
 export function NavBar({
   downloadUrl,
@@ -47,9 +48,13 @@ export function NavBar({
             )}
             {fullscreenTarget && <FullscreenButton target={fullscreenTarget} />}
             <DownloadButton href={downloadUrl} />
+            <GoogleAuthControl />
           </div>
         ) : (
-          <span className="text-xs uppercase tracking-[0.2em] text-muted">Daily sky notes</span>
+          <div className="flex items-center gap-3">
+            <span className="text-xs uppercase tracking-[0.2em] text-muted">Daily sky notes</span>
+            <GoogleAuthControl />
+          </div>
         )}
       </nav>
     </header>

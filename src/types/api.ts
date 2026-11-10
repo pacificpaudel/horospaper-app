@@ -68,7 +68,27 @@ export interface StructuredAstrologyDataDTO {
 export interface DailyReadingDTO {
   rashi: { name: string; nepali: string; sign: string };
   luckScore: number;
+  luckCalculation?: {
+    method: "hindu-10-factor-v2";
+    weightedScore: number;
+    factors: { id: string; name: string; weight: number; score: number; detail: string; available: boolean }[];
+  };
   intent: { mood: string; theme: string };
+  planetary: {
+    score: number;
+    gocharScore: number;
+    tara: { name: string; score: number };
+    moonNakshatra: string;
+    moonHouse: number;
+    chandrashtama: boolean;
+    sadeSati: boolean;
+  };
+  rashifal: { sentiment: number; theme: string; summary: string | null } | null;
+  panchang: {
+    data: { tithi: { name: string; paksha: string }; nakshatra: { name: string }; yoga: { name: string }; karana: { name: string } };
+    insight: { sentiment: number; summary: string } | null;
+  } | null;
+  schumannScore?: number | null;
   /** The kundli the Luck Chart is drawn from; absent when the day has none. */
   kundli?: unknown | null;
 }

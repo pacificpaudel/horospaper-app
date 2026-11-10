@@ -14,9 +14,11 @@ const SCOPES = ["https://www.googleapis.com/auth/drive.file", "https://www.googl
 const TOKEN_TTL_SECONDS = 180 * 24 * 60 * 60;
 // A consent round-trip, not a session.
 const STATE_TTL_SECONDS = 10 * 60;
+const LOGIN_SCOPES = ["openid", "email", "profile"];
 
 const tokenKey = (userId: string) => `google:tokens:${userId}`;
 const stateKey = (state: string) => `google:oauth-state:${state}`;
+const loginStateKey = (state: string) => `google:login-state:${state}`;
 
 interface StoredTokens {
   refreshToken: string;
@@ -76,6 +78,26 @@ export async function googleConsentUrl(request: NextRequest, pending: PendingEve
   return `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
 }
 
+/** Basic Google sign-in; uses the configured Google callback and carries the current guest id for profile migration. */
+export async function googleLoginUrl(request: NextRequest, guestId: string | null): Promise<string> {
+  const state = randomUUID();
+  await redis.set(loginStateKey(state), { guestId }, { ex: STATE_TTL_SECONDS });
+  const params = new URLSearchParams({
+    client_id: process.env.GOOGLE_OAUTH_CLIENT_ID ?? "",
+    redirect_uri: googleRedirectUri(request),
+    response_type: "code",
+    scope: LOGIN_SCOPES.join(" "),
+    state,
+    prompt: "select_account",
+  });
+  return `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
+}
+
+export async function takeGoogleLoginState(state: string): Promise<{ guestId: string | null } | null> {
+  if (!state) return null;
+  return (await redis.getdel<{ guestId: string | null }>(loginStateKey(state))) ?? null;
+}
+
 /** Reads and retires a consent state -- one callback per consent URL. */
 export async function takePendingEvent(state: string): Promise<PendingEvent | null> {
   if (!state) return null;
@@ -91,6 +113,11 @@ async function tokenRequest(body: Record<string, string>): Promise<{ access_toke
   });
   if (!res.ok) throw new Error(`Google token request failed (${res.status}): ${(await res.text()).slice(0, 200)}`);
   return res.json();
+}
+
+export async function exchangeGoogleCode(code: string, redirectUri: string): Promise<string> {
+  const token = await tokenRequest({ code, redirect_uri: redirectUri, grant_type: "authorization_code" });
+  return token.access_token;
 }
 
 /** Trades the callback's code for tokens and stores them for this guest. */

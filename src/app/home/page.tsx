@@ -94,6 +94,7 @@ export default function HomePage() {
   const setHoroscope = useCallback((next: HoroscopeDTO | null) => {
     setHoroscopeState(next);
     setLastRefreshed(next ? new Date() : null);
+    if (next && typeof window !== "undefined") window.dispatchEvent(new Event("horospaper:today-available"));
   }, []);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -101,6 +102,7 @@ export default function HomePage() {
   // Owned here, not by LuckChartLayer, so the zoomed Luck Chart stays open
   // (and just redraws) when a new day's wallpaper replaces the old one.
   const [luckChartOpen, setLuckChartOpen] = useState(false);
+  const [luckDetailsOpen, setLuckDetailsOpen] = useState(false);
   // Mobile by default, whatever the device; switched with the header's
   // "Desktop Version" / "Mobile Version" button or the form's "View as".
   // Nothing that depends on it shows until the profile has loaded (client-side), so reading the saved view here is safe.
@@ -121,7 +123,19 @@ export default function HomePage() {
     apiFetch<{ profile: BirthProfileDTO | null }>("/api/birth-profile")
       .then(({ profile: savedProfile }) => setProfile(savedProfile))
       .catch(() => setProfile(null));
-  }, []);
+    const search = new URLSearchParams(window.location.search);
+    if (search.get("showToday") === "1") {
+      setGenerating(true);
+      const timezone = search.get("timezone") || currentTimeZone();
+      apiFetch<{ horoscope: HoroscopeDTO | null }>(`/api/horoscope/today?timezone=${encodeURIComponent(timezone)}`)
+        .then(({ horoscope: savedToday }) => {
+          if (savedToday) setHoroscope(savedToday);
+          else setError("There is no saved wallpaper for today yet.");
+        })
+        .catch((err) => setError(err instanceof ApiError ? err.message : "Could not load today’s saved wallpaper."))
+        .finally(() => setGenerating(false));
+    }
+  }, [setHoroscope]);
 
   // Checks in when the day-change poll below notices the local calendar
   // date has rolled over, so a new day's horoscope (and wallpaper) picks up
@@ -229,7 +243,7 @@ export default function HomePage() {
       const frameCanvas = horoscope.imageUrlFrame || horoscope.imageUrlMobile ? MOBILE_CANVAS : DESKTOP_CANVAS;
       return (
         <FrameMode imageUrl={frameImageUrl} luckScore={luckScore} onExit={() => setFrameMode(false)}>
-          <LuckChartLayer canvas={frameCanvas} hasChart={hasChart} date={horoscope.generationDate} isPreview={horoscope.isPreview} open={luckChartOpen} onOpenChange={setLuckChartOpen} />
+          <LuckChartLayer canvas={frameCanvas} hasChart={hasChart} date={horoscope.generationDate} isPreview={horoscope.isPreview} reading={horoscope.dailyReading} open={luckChartOpen} onOpenChange={setLuckChartOpen} detailsOpen={luckDetailsOpen} onDetailsOpenChange={setLuckDetailsOpen} />
         </FrameMode>
       );
     }
@@ -250,7 +264,7 @@ export default function HomePage() {
             <LuckChartEventNotice />
           </Suspense>
           <HoroscopeArtwork key={imageUrl} imageUrl={imageUrl} isMobile={isMobile} luckScore={luckScore} frameRef={artworkRef}>
-            <LuckChartLayer canvas={canvas} hasChart={hasChart} date={horoscope.generationDate} isPreview={horoscope.isPreview} open={luckChartOpen} onOpenChange={setLuckChartOpen} />
+            <LuckChartLayer canvas={canvas} hasChart={hasChart} date={horoscope.generationDate} isPreview={horoscope.isPreview} reading={horoscope.dailyReading} open={luckChartOpen} onOpenChange={setLuckChartOpen} detailsOpen={luckDetailsOpen} onDetailsOpenChange={setLuckDetailsOpen} />
           </HoroscopeArtwork>
         </main>
       </div>

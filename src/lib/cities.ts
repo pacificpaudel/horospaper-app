@@ -67,3 +67,23 @@ export function searchCities(query: string, limit = 40): City[] {
   }
   return [...starts, ...contains].slice(0, limit).map(strip);
 }
+
+/** Resolve browser coordinates to the nearest known city for a compact UI label. */
+export function nearestCity(latitude: number, longitude: number): City | null {
+  let nearest: IndexedCity | null = null;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+  for (const city of cities()) {
+    const latDelta = (city.latitude - latitude) * Math.PI / 180;
+    const lonDelta = (city.longitude - longitude) * Math.PI / 180;
+    const a = Math.sin(latDelta / 2) ** 2
+      + Math.cos(latitude * Math.PI / 180) * Math.cos(city.latitude * Math.PI / 180) * Math.sin(lonDelta / 2) ** 2;
+    const distance = 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearest = city;
+    }
+  }
+  if (!nearest) return null;
+  const { label, timezone, latitude: cityLatitude, longitude: cityLongitude } = nearest;
+  return { label, timezone, latitude: cityLatitude, longitude: cityLongitude };
+}

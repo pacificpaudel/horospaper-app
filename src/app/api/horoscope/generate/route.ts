@@ -11,6 +11,8 @@ import {
 import { canConsumeGeneration, consumeGeneration, getFreeLimit, getUsageCount } from "@/lib/usage";
 import { todayForTimezone } from "@/lib/timezoneDay";
 import { isValidTimeZone } from "@/lib/validation";
+import { saveArchivedCalendarDay } from "@/lib/userCalendar";
+import { redis } from "@/lib/redis";
 
 /**
  * Generates today's horoscope (or tomorrow's preview when { preview: true }
@@ -63,6 +65,14 @@ export async function POST(request: NextRequest) {
     // Schumann gauge + graph are redrawn once a new hour's data is out.
     // Free -- not counted against the daily generation budget.
     const horoscope = needsSchumannRefresh(existing) ? await refreshHoroscopeWallpaper(existing, displayTimeZone, desktopRatio) : existing;
+    if (!preview && horoscope.dailyReading) {
+      await saveArchivedCalendarDay(user.id, {
+        date: horoscope.generationDate,
+        reading: horoscope.dailyReading,
+        moonPhaseName: horoscope.astrologyData.today.moonPhaseName,
+        moonIllumination: horoscope.astrologyData.today.moonIllumination,
+      }).catch((err) => console.warn("[calendar] archive cached reading failed:", err instanceof Error ? err.message : err));
+    }
     return NextResponse.json({ horoscope, cached: true });
   }
 
@@ -84,6 +94,9 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    const currentLocation = user.id.startsWith("google:")
+      ? await redis.get<{ latitude: number; longitude: number; timezone: string }>(`account-location:${user.id}`).catch(() => null)
+      : null;
     const horoscope = await generateHoroscopeForUser({
       userId: user.id,
       profile,
@@ -91,6 +104,7 @@ export async function POST(request: NextRequest) {
       isPreview: preview,
       desktopRatio,
       displayTimeZone,
+      currentLocation: currentLocation ?? undefined,
       regenerateArt: refresh,
     });
     return NextResponse.json({ horoscope, cached: false });
